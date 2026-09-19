@@ -1,0 +1,609 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #0a0a0b;
+  color: #f6f4ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: radial-gradient(circle at 50% 0, #252117, #0a0a0b 42%);
+}
+
+button,
+textarea,
+select,
+input {
+  font: inherit;
+}
+
+main {
+  width: min(1440px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 56px 0;
+}
+
+header {
+  max-width: 900px;
+  margin-bottom: 28px;
+}
+
+h1 {
+  margin: 4px 0 8px;
+  font-size: clamp(2rem, 5vw, 4.4rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+header p {
+  color: #aaa69a;
+  line-height: 1.5;
+}
+
+.eyebrow {
+  color: #e5c978;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.demo-shell {
+  padding: 18px;
+  border: 1px solid #38352d;
+  border-radius: 18px;
+  background: #111113cc;
+}
+
+.session-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 0.7fr);
+  gap: 18px;
+}
+
+.player {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #000;
+  border-radius: 12px;
+}
+
+.player video {
+  width: 100%;
+  height: 100%;
+}
+
+.player-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  color: #77746b;
+  font-size: 0.85rem;
+  place-items: center;
+}
+
+.status {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 9px;
+  color: #aaa;
+  font:
+    12px ui-monospace,
+    monospace;
+  background: #191919cc;
+  border-radius: 999px;
+}
+
+.status-ready {
+  color: #8ee59d;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+fieldset {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #3b3932;
+  border-radius: 10px;
+}
+
+legend {
+  padding: 0 6px;
+  color: #ded5b8;
+  font-size: 0.82rem;
+}
+
+.hint {
+  margin: 0 0 12px;
+  color: #77746b;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #bbb7ab;
+  font-size: 0.82rem;
+}
+
+textarea,
+select,
+input {
+  width: 100%;
+  padding: 10px;
+  color: inherit;
+  background: #171719;
+  border: 1px solid #3b3932;
+  border-radius: 8px;
+}
+
+textarea {
+  min-height: 118px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+button {
+  padding: 9px 12px;
+  color: #15130e;
+  cursor: pointer;
+  background: #ded5b8;
+  border: 1px solid #ded5b8;
+  border-radius: 8px;
+  transition:
+    filter 100ms ease,
+    transform 100ms ease;
+}
+
+button:active:not(:disabled) {
+  filter: brightness(0.82);
+  transform: translateY(2px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secondary button {
+  color: #ded5b8;
+  background: transparent;
+  border-color: #4e4a3e;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  gap: 10px;
+}
+
+.selected-image {
+  margin: 10px 0 0;
+  color: #918d82;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.nano-demo {
+  margin-top: 18px;
+  border: 1px solid #3b3932;
+  border-radius: 10px;
+  background: #141416;
+}
+
+.nano-demo summary {
+  padding: 12px;
+  color: #ded5b8;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.nano-demo[open] summary {
+  border-bottom: 1px solid #3b3932;
+}
+
+.nano-demo-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.preset-prompt {
+  padding: 10px;
+  color: #aaa69a;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  background: #0b0b0c;
+  border-radius: 8px;
+}
+
+.preset-prompt strong {
+  color: #ded5b8;
+}
+
+.preset-prompt p {
+  margin: 5px 0 0;
+}
+
+.nano-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.nano-preview {
+  min-width: 0;
+  margin: 0;
+}
+
+.nano-image-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #000;
+  border-radius: 8px;
+}
+
+.nano-image-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.nano-output-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  color: #77746b;
+  font-size: 0.76rem;
+  text-align: center;
+  place-items: center;
+}
+
+.nano-preview figcaption {
+  margin-top: 5px;
+  color: #77746b;
+  font-size: 0.7rem;
+}
+
+.error {
+  margin: 0;
+  padding: 10px;
+  color: #ffb2b2;
+  font-size: 0.85rem;
+  background: #3c1717;
+  border-radius: 8px;
+}
+
+aside {
+  padding: 10px;
+  color: #77746b;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  background: #0b0b0c;
+  border-radius: 8px;
+}
+
+aside strong,
+aside code {
+  display: block;
+}
+
+aside code {
+  margin-top: 4px;
+  color: #aaa69a;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  main {
+    padding: 28px 0;
+  }
+
+  .session-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .nano-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Isekai game UI                                                    */
+/* ---------------------------------------------------------------- */
+
+.isekai-main {
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 40px 0 64px;
+}
+
+.isekai-picker {
+  padding: 24px 4px;
+  text-align: center;
+}
+
+.isekai-picker h1 {
+  font-family: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+  background: linear-gradient(135deg, #ffb3c6, #ffd479 60%, #ff8fb0);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.isekai-tagline {
+  max-width: 620px;
+  margin: 0 auto 36px;
+  color: #c9c4b8;
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.scenario-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 26px 18px;
+  text-align: left;
+  background: linear-gradient(160deg, #1c1712, #100e0c);
+  border: 1px solid #3b332a;
+  border-radius: 16px;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.scenario-card:hover {
+  border-color: #d6336c;
+  box-shadow: 0 10px 30px rgba(214, 51, 108, 0.18);
+  transform: translateY(-3px);
+}
+
+.scenario-jp {
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #ffd9e6;
+}
+
+.scenario-en {
+  color: #aaa69a;
+  font-size: 0.85rem;
+}
+
+.scenario-steps {
+  margin-top: 10px;
+  color: #e5c978;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.isekai-play {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  gap: 20px;
+}
+
+.isekai-video {
+  position: relative;
+}
+
+.isekai-video .player {
+  border: 1px solid #3b332a;
+}
+
+.isekai-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  color: #ffd9e6;
+  font-family: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+  font-size: 1rem;
+  background: rgba(10, 8, 8, 0.55);
+  border-radius: 12px;
+  place-items: center;
+  pointer-events: none;
+}
+
+.isekai-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  background: #111113cc;
+  border: 1px solid #38352d;
+  border-radius: 16px;
+}
+
+.isekai-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.isekai-title {
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #ffd9e6;
+}
+
+.isekai-title em {
+  color: #aaa69a;
+  font-style: normal;
+  font-size: 0.85rem;
+}
+
+.isekai-leave {
+  padding: 6px 12px;
+  color: #aaa69a;
+  font-size: 0.76rem;
+  background: transparent;
+  border-color: #3b332a;
+}
+
+.isekai-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.isekai-progress .dot {
+  width: 9px;
+  height: 9px;
+  background: #3b332a;
+  border-radius: 50%;
+}
+
+.isekai-progress .dot.active {
+  background: #d6336c;
+  box-shadow: 0 0 0 3px rgba(214, 51, 108, 0.25);
+}
+
+.isekai-progress .dot.done {
+  background: #e5c978;
+}
+
+.isekai-streak {
+  margin-left: auto;
+  color: #e5c978;
+  font-size: 0.78rem;
+}
+
+.isekai-objective {
+  padding: 14px;
+  background: #171012;
+  border: 1px solid #3b2a30;
+  border-radius: 12px;
+}
+
+.isekai-objective .label {
+  color: #aaa69a;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.objective-en {
+  margin-top: 4px;
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.objective-hint {
+  margin-top: 8px;
+  color: #e5c978;
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 0.85rem;
+}
+
+.isekai-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.isekai-input {
+  flex: 1;
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 1.05rem;
+}
+
+.isekai-mic {
+  padding: 0 12px;
+  background: #171719;
+  border-color: #3b3932;
+}
+
+.isekai-mic.listening {
+  background: #d6336c;
+  border-color: #d6336c;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.isekai-submit {
+  background: linear-gradient(135deg, #d6336c, #e8598a);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+.isekai-feedback {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.isekai-feedback.ok {
+  color: #b8f5c2;
+  background: #16321f;
+  border: 1px solid #2b5a3a;
+}
+
+.isekai-feedback.no {
+  color: #ffd9a8;
+  background: #332216;
+  border: 1px solid #5a4a2b;
+}
+
+.isekai-complete {
+  padding: 20px;
+  text-align: center;
+}
+
+.isekai-complete h2 {
+  margin-top: 0;
+  color: #ffd9e6;
+}
+
+.isekai-error {
+  color: #ffb2b2;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .isekai-play {
+    grid-template-columns: 1fr;
+  }
+}
