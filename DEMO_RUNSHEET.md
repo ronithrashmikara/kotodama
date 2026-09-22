@@ -41,6 +41,25 @@ Rate pulled live from `GET https://api.reactor.inc/pricing`:
 
 ---
 
+### Verified against the live API
+
+Measured on a real session, not estimated:
+
+| | |
+|---|---|
+| Key + model grant | **Valid** — mints session JWTs for `visko-orbis-stable` |
+| **GPU provision time** | **~3 seconds** from create to `ACTIVE` |
+| REST session lifecycle | `CREATED` → `ACTIVE` → `CLOSED` |
+| Idle session with no client attached | Auto-closed itself at **~60s** |
+| Cost of both verification runs | **$0.79** total |
+
+So the "Opening a portal to the world…" spinner should clear in about
+3–4 seconds. If it hangs much longer than that, something is wrong — stop and
+re-run preflight rather than burning the take.
+
+Note: `ACTIVE` is the REST status. The SDK's *client-side* state is called
+`ready` and is a different thing — don't confuse them when reading logs.
+
 ## 2. Preflight (run this before every session)
 
 ```bash
@@ -80,7 +99,8 @@ Scroll down just far enough to reveal the four world cards.
 
 ### 0:15–0:30 — Enter the world
 
-Click **こうえん / The Park**. While it connects:
+Click **こうえん / The Park**. The GPU assigns in ~3 seconds (measured), so
+the portal spinner is brief. While it connects:
 
 > "This is a real, live AI-generated video world — not a pre-rendered clip.
 > It's running right now, and it reacts to what I say."
@@ -171,6 +191,7 @@ Keep this open in a second window. Park scenario, in order:
 
 | Problem | Do this |
 |---|---|
+| Portal spinner hangs past ~10s | GPU assigns in ~3s normally. Stop, leave, re-run preflight — don't sit on a stalled session at $0.58/min. |
 | World won't connect | Stop. Re-run preflight. Don't burn takes on a bad key. |
 | Answer graded wrong | Groq is non-deterministic. Retype it — don't fight it on camera. |
 | No narration audio | Fish Audio may have hiccuped. The text still renders; hit the replay speaker icon. |
