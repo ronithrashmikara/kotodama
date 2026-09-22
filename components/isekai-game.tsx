@@ -853,22 +853,32 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
             </button>
           )}
 
-          <button
-            className="scenario-card scenario-card-companion"
-            style={{ "--card-art": `url(${COMPANION_IMAGE})` } as CSSProperties}
-            onClick={() => onPick(buildCompanionScenario())}
-          >
-            <span className="scenario-index">話す</span>
-            <span className="scenario-body">
-              <span className="scenario-jp">ひな</span>
-              <span className="scenario-en">Walk and talk with Hina</span>
-              <span className="scenario-steps">Free conversation · she changes the world</span>
-            </span>
-            <span className="scenario-arrow">
-              <ArrowRightIcon />
-            </span>
-          </button>
         </div>
+
+        {/* Hina is a different kind of experience from the structured worlds —
+            free conversation, no objectives — so she gets her own block
+            rather than being a fifth peer in the grid. */}
+        <button
+          className="companion-feature"
+          onClick={() => onPick(buildCompanionScenario())}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="companion-feature-art" src={COMPANION_IMAGE} alt="" />
+          <span className="companion-feature-scrim" />
+          <span className="companion-feature-body">
+            <span className="companion-feature-tag">Companion mode</span>
+            <span className="companion-feature-title">
+              ひな <em>Walk and talk with Hina</em>
+            </span>
+            <span className="companion-feature-text">
+              No objectives, no grading — just talk to her in Japanese. She answers out
+              loud, and the world changes around you as she does.
+            </span>
+            <span className="companion-feature-cta">
+              Start walking <ArrowRightIcon />
+            </span>
+          </span>
+        </button>
       </div>
     </>
   );

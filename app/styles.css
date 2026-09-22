@@ -1421,25 +1421,131 @@ aside code {
   color: var(--k-danger);
 }
 
-.scenario-card-companion {
-  border-color: rgba(201, 179, 255, 0.35);
+.companion-feature {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 1000px;
+  min-height: 260px;
+  margin: 16px auto 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  background: #0d0b0a;
+  border: 1px solid rgba(201, 179, 255, 0.28);
+  border-radius: var(--k-radius-lg);
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
 }
 
-.scenario-card-companion:hover,
-.scenario-card-companion:focus-visible {
-  border-color: rgba(201, 179, 255, 0.75);
-  box-shadow: 0 20px 46px -14px rgba(201, 179, 255, 0.35);
+.companion-feature:hover,
+.companion-feature:focus-visible {
+  border-color: rgba(201, 179, 255, 0.7);
+  box-shadow: 0 22px 52px -16px rgba(201, 179, 255, 0.35);
+  transform: translateY(-4px);
 }
 
-.scenario-card-companion:hover .scenario-arrow,
-.scenario-card-companion:focus-visible .scenario-arrow {
-  color: #1a1410;
-  background: #c9b3ff;
+.companion-feature-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 62% 28%;
+  transition: transform 600ms cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
-.scenario-card-companion .scenario-index {
+.companion-feature:hover .companion-feature-art {
+  transform: scale(1.05);
+}
+
+/* Weighted to the left so the copy stays readable while she stays visible. */
+.companion-feature-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(8, 6, 8, 0.95) 0%, rgba(8, 6, 8, 0.82) 42%, rgba(8, 6, 8, 0.15) 78%),
+    linear-gradient(180deg, rgba(8, 6, 8, 0.2) 0%, rgba(8, 6, 8, 0.55) 100%);
+}
+
+.companion-feature-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-width: 460px;
+  padding: 30px 28px;
+}
+
+.companion-feature-tag {
+  color: #c9b3ff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.companion-feature-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #fff;
   font-family: "Noto Sans JP", sans-serif;
-  color: #e4d8ff;
+  font-size: 1.7rem;
+  font-weight: 700;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+
+.companion-feature-title em {
+  color: var(--k-text-muted);
+  font-family: Inter, sans-serif;
+  font-size: 0.86rem;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.companion-feature-text {
+  color: #e4ded2;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
+}
+
+.companion-feature-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 9px 18px;
+  color: #1a1410;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #c9b3ff, #e0d2ff);
+  border-radius: 999px;
+  transition: gap 200ms ease;
+}
+
+.companion-feature:hover .companion-feature-cta {
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .companion-feature-body {
+    max-width: none;
+    padding: 22px 18px;
+  }
+
+  .companion-feature-scrim {
+    background: linear-gradient(180deg, rgba(8, 6, 8, 0.55) 0%, rgba(8, 6, 8, 0.93) 60%);
+  }
+
+  .companion-feature-title {
+    font-size: 1.4rem;
+  }
 }
 
 .companion-line {
