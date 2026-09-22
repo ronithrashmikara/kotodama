@@ -826,6 +826,10 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
           <p className="isekai-tagline">
             Step into a world you actually want to be in — speak Japanese to it, and it moves.
           </p>
+          <span className="hero-version">
+            <span className="hero-version-dot" />
+            version 0.1 · early preview
+          </span>
         </div>
       </div>
 

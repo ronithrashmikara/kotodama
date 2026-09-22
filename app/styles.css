@@ -2663,3 +2663,31 @@ html {
 .builder-popover-name:focus-visible .handle{opacity:0;transform:translateY(-5px)}
 .builder-popover-name:hover .real,
 .builder-popover-name:focus-visible .real{opacity:1;transform:translateY(0)}
+
+/* Small build marker under the hero tagline — honest about how early this is. */
+.hero-version {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 26px;
+  padding: 6px 15px;
+  color: #d8d2c4;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: rgba(10, 8, 9, 0.38);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+
+.hero-version-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--k-success);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(111, 220, 154, 0.2);
+}
