@@ -54,3 +54,20 @@ export function localCheck(step: ScenarioStep, learnerText: string) {
     missing: step.requiredAll.filter((word) => !normalized.includes(word)),
   };
 }
+
+/**
+ * Choice mode: no typing, no speaking — you read two kana-only options and
+ * pick one. It is the lowest-barrier way in, and the only mode someone who
+ * reads no Japanese at all can still play.
+ */
+export function buildChoiceScenario(): Scenario {
+  return {
+    id: "choices",
+    titleJp: "えらぶ",
+    titleEn: "Choose the story",
+    basePrompt:
+      "A quiet anime-style park at golden hour, cherry blossom trees along a winding path, " +
+      "soft warm light, painterly studio-anime background art, calm and still.",
+    steps: [],
+  };
+}

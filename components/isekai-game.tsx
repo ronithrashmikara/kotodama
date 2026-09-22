@@ -11,7 +11,15 @@ import { VocabReview } from "@/components/vocab-review";
 import { useOrbisSession, type OrbisSession } from "@/hooks/use-orbis-session";
 import { DEFAULT_LEVEL_ID, getLevel, LEVELS } from "@/lib/levels";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
-import { buildFreeformScenario, localCheck, SCENARIOS, type Scenario } from "@/lib/scenarios";
+import {
+  buildChoiceScenario,
+  buildFreeformScenario,
+  localCheck,
+  SCENARIOS,
+  type Scenario,
+} from "@/lib/scenarios";
+import { ChoiceCards } from "@/components/choice-cards";
+import type { Choice } from "@/app/api/choices/route";
 import { addEvent, composeScene, type SceneEvent } from "@/lib/scene";
 import {
   buildCompanionScenario,
@@ -89,6 +97,8 @@ function IsekaiSession({
   const runningScene = scenario ? composeScene(scenario.basePrompt, sceneEvents) : "";
   const [conversation, setConversation] = useState<{ role: "you" | "companion"; text: string }[]>([]);
   const [companionLine, setCompanionLine] = useState<CompanionReply | null>(null);
+  const [choices, setChoices] = useState<Choice[] | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [checking, setChecking] = useState(false);
@@ -165,6 +175,36 @@ function IsekaiSession({
     },
     [levelId, speak],
   );
+
+  // Choice mode: fetch two kana-only options for whatever the scene is now.
+  const offerChoices = useCallback(
+    async (scene: string) => {
+      if (!scene.trim()) return;
+      setChoosing(true);
+      try {
+        const res = await fetch("/api/choices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene,
+            recent: sceneEventsRef.current.filter((e) => e.source === "you").slice(-3).map((e) => e.text),
+          }),
+        });
+        if (!res.ok) {
+          setChoices(null);
+          return;
+        }
+        const data: { choices: Choice[] } = await res.json();
+        setChoices(data.choices ?? null);
+      } catch {
+        setChoices(null);
+      } finally {
+        setChoosing(false);
+      }
+    },
+    [],
+  );
+
 
   // The world keeps moving whether or not you act. This is what makes a live
   // model load-bearing rather than decorative — and it's effectively free,
@@ -253,8 +293,9 @@ function IsekaiSession({
     if (phase === "starting" && session.runStarted) {
       setPhase("playing");
       void narrateScene(runningScene);
+      if (scenario?.id === "choices") void offerChoices(runningScene);
     }
-  }, [phase, session.runStarted, narrateScene, runningScene]);
+  }, [phase, session.runStarted, narrateScene, runningScene, scenario, offerChoices]);
 
   const enterScenario = async (chosen: Scenario) => {
     setScenario(chosen);
@@ -267,6 +308,7 @@ function IsekaiSession({
     setCorrectTurns(0);
     setConversation([]);
     setCompanionLine(null);
+    setChoices(null);
     setPhase("connecting");
 
     // Condition Orbis on Hina's reference frame so she starts as the same
@@ -303,7 +345,35 @@ function IsekaiSession({
 
   const isFreeform = scenario?.id === "freeform";
   const isCompanion = scenario?.id === "companion";
+  const isChoices = scenario?.id === "choices";
   const step = scenario ? scenario.steps[stepIndex] : null;
+
+  const pickChoice = async (choice: Choice) => {
+    if (!scenario || checking) return;
+    setChecking(true);
+    setChoices(null);
+    try {
+      const next = addEvent(sceneEvents, {
+        text: choice.sceneAddEn,
+        source: "you",
+        said: choice.kana,
+      });
+      setSceneEvents(next);
+      setWorldEvent(null);
+      setTurns((t) => t + 1);
+      setCorrectTurns((c) => c + 1);
+
+      const nextScene = composeScene(scenario.basePrompt, next);
+      pendingSteer.current = nextScene;
+      session.setPrompt(nextScene);
+      speak(choice.kana);
+
+      // Let the steer land before asking what could happen after it.
+      setTimeout(() => void offerChoices(nextScene), 1200);
+    } finally {
+      setChecking(false);
+    }
+  };
 
   // Companion mode is a conversation, not a graded turn: whatever you say goes
   // to Hina, she answers in Japanese, and her answer steers the world.
@@ -621,7 +691,28 @@ function IsekaiSession({
               </div>
             )}
 
-            {phase === "playing" && (isCompanion || isFreeform || step) && (
+            {phase === "playing" && isChoices && (
+              <>
+                {choices ? (
+                  <ChoiceCards
+                    choices={choices}
+                    onPick={(c) => void pickChoice(c)}
+                    disabled={checking}
+                    onSpeak={speak}
+                  />
+                ) : (
+                  <div className="narration narration-loading">
+                    <span className="isekai-spinner small" aria-hidden="true" />
+                    {choosing ? "Thinking what could happen next…" : "…"}
+                  </div>
+                )}
+                <button className="isekai-finish" onClick={() => setPhase("complete")}>
+                  Finish this story
+                </button>
+              </>
+            )}
+
+            {phase === "playing" && !isChoices && (isCompanion || isFreeform || step) && (
               <>
                 <div className="isekai-objective">
                   {isCompanion ? (
@@ -857,6 +948,22 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
               </span>
             </button>
           ))}
+
+          <button
+            className="scenario-card scenario-card-choices"
+            style={{ "--card-art": "url(/art/night-city.webp)" } as CSSProperties}
+            onClick={() => onPick(buildChoiceScenario())}
+          >
+            <span className="scenario-index">かな</span>
+            <span className="scenario-body">
+              <span className="scenario-jp">えらぶ</span>
+              <span className="scenario-en">Choose the story</span>
+              <span className="scenario-steps">No typing · kana only</span>
+            </span>
+            <span className="scenario-arrow">
+              <ArrowRightIcon />
+            </span>
+          </button>
 
           {freeformOpen ? (
             <form
