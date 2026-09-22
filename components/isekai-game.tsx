@@ -7,6 +7,7 @@ import type { Narration as NarrationData, NarrationToken } from "@/app/api/narra
 import { Narration } from "@/components/narration";
 import { OrbisPlayer } from "@/components/orbis-player";
 import { VocabPanel } from "@/components/vocab-panel";
+import { VocabReview } from "@/components/vocab-review";
 import { useOrbisSession, type OrbisSession } from "@/hooks/use-orbis-session";
 import { DEFAULT_LEVEL_ID, getLevel, LEVELS } from "@/lib/levels";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
@@ -100,6 +101,7 @@ function IsekaiSession({
   const [narrating, setNarrating] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [vocab, setVocab] = useState<VocabEntry[]>([]);
+  const [reviewing, setReviewing] = useState(false);
 
   const level = getLevel(levelId);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -741,7 +743,21 @@ function IsekaiSession({
             )}
 
             {phase !== "connecting" && phase !== "starting" && (
-              <VocabPanel entries={vocab} onRemove={handleRemoveWord} onSpeak={speak} />
+              reviewing ? (
+                <VocabReview
+                  entries={vocab}
+                  onUpdated={setVocab}
+                  onClose={() => setReviewing(false)}
+                  onSpeak={speak}
+                />
+              ) : (
+                <VocabPanel
+                  entries={vocab}
+                  onRemove={handleRemoveWord}
+                  onSpeak={speak}
+                  onReview={() => setReviewing(true)}
+                />
+              )
             )}
 
             {session.error && <div className="isekai-error">{session.error}</div>}

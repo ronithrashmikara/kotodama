@@ -2,16 +2,18 @@
 
 import { useState } from "react";
 
-import type { VocabEntry } from "@/lib/vocab";
+import { dueEntries, type VocabEntry } from "@/lib/vocab";
 
 type VocabPanelProps = {
   entries: VocabEntry[];
   onRemove: (surface: string) => void;
   onSpeak: (text: string) => void;
+  onReview: () => void;
 };
 
-export function VocabPanel({ entries, onRemove, onSpeak }: VocabPanelProps) {
+export function VocabPanel({ entries, onRemove, onSpeak, onReview }: VocabPanelProps) {
   const [open, setOpen] = useState(false);
+  const due = dueEntries(entries).length;
 
   return (
     <div className="vocab">
@@ -24,6 +26,7 @@ export function VocabPanel({ entries, onRemove, onSpeak }: VocabPanelProps) {
         <BookIcon />
         <span>My words</span>
         <span className="vocab-count">{entries.length}</span>
+        {due > 0 && <span className="vocab-due">{due} due</span>}
         <span className={`vocab-chevron ${open ? "open" : ""}`}>
           <ChevronIcon />
         </span>
@@ -36,7 +39,11 @@ export function VocabPanel({ entries, onRemove, onSpeak }: VocabPanelProps) {
               Double-click any word in the narration to save it here.
             </p>
           ) : (
-            <ul className="vocab-list">
+            <>
+              <button type="button" className="vocab-review-cta" onClick={onReview}>
+                {due > 0 ? `Review ${due} word${due === 1 ? "" : "s"}` : "Review anyway"}
+              </button>
+              <ul className="vocab-list">
               {entries.map((entry) => (
                 <li key={entry.surface} className="vocab-item">
                   <button
@@ -59,7 +66,8 @@ export function VocabPanel({ entries, onRemove, onSpeak }: VocabPanelProps) {
                   </button>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </>
           )}
         </div>
       )}
