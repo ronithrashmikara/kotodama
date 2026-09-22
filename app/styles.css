@@ -1421,6 +1421,67 @@ aside code {
   color: var(--k-danger);
 }
 
+.scenario-card-companion {
+  border-color: rgba(201, 179, 255, 0.35);
+}
+
+.scenario-card-companion:hover,
+.scenario-card-companion:focus-visible {
+  border-color: rgba(201, 179, 255, 0.75);
+  box-shadow: 0 20px 46px -14px rgba(201, 179, 255, 0.35);
+}
+
+.scenario-card-companion:hover .scenario-arrow,
+.scenario-card-companion:focus-visible .scenario-arrow {
+  color: #1a1410;
+  background: #c9b3ff;
+}
+
+.scenario-card-companion .scenario-index {
+  font-family: "Noto Sans JP", sans-serif;
+  color: #e4d8ff;
+}
+
+.companion-line {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.companion-avatar {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  object-position: 50% 22%;
+  border: 1px solid rgba(201, 179, 255, 0.45);
+  border-radius: 50%;
+}
+
+.companion-speech {
+  min-width: 0;
+}
+
+.companion-name {
+  display: block;
+  margin-bottom: 5px;
+  color: #c9b3ff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Inside her speech bubble the narration panel is the bubble, so drop its
+   own framing and let the avatar row provide the structure. */
+.companion-speech .narration {
+  padding: 12px 14px;
+}
+
+.companion-speech .narration-label {
+  display: none;
+}
+
 .world-toggle {
   display: inline-flex;
   align-items: center;

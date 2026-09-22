@@ -12,6 +12,13 @@ import { DEFAULT_LEVEL_ID, getLevel, LEVELS } from "@/lib/levels";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
 import { buildFreeformScenario, localCheck, SCENARIOS, type Scenario } from "@/lib/scenarios";
 import { addEvent, composeScene, type SceneEvent } from "@/lib/scene";
+import {
+  buildCompanionScenario,
+  COMPANION_IMAGE,
+  COMPANION_NAME,
+  withCompanion,
+} from "@/lib/companion";
+import type { CompanionReply } from "@/app/api/companion/route";
 import { loadVocab, removeWord, saveWord, type VocabEntry } from "@/lib/vocab";
 
 type CheckResponse = {
@@ -79,6 +86,8 @@ function IsekaiSession({
   const [worldAlive, setWorldAlive] = useState(true);
   const [worldEvent, setWorldEvent] = useState<{ text: string; urgent: boolean } | null>(null);
   const runningScene = scenario ? composeScene(scenario.basePrompt, sceneEvents) : "";
+  const [conversation, setConversation] = useState<{ role: "you" | "companion"; text: string }[]>([]);
+  const [companionLine, setCompanionLine] = useState<CompanionReply | null>(null);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [checking, setChecking] = useState(false);
@@ -238,7 +247,23 @@ function IsekaiSession({
     setStreak(0);
     setTurns(0);
     setCorrectTurns(0);
+    setConversation([]);
+    setCompanionLine(null);
     setPhase("connecting");
+
+    // Condition Orbis on Hina's reference frame so she starts as the same
+    // person every session. The locked text description in the prompt is what
+    // keeps her that way once set_prompt starts moving the scene.
+    if (chosen.id === "companion") {
+      try {
+        const blob = await (await fetch(COMPANION_IMAGE)).blob();
+        session.selectImage(new File([blob], "companion.jpg", { type: "image/jpeg" }));
+      } catch {
+        // Losing the anchor costs consistency, not the session — carry on.
+      }
+    } else {
+      session.selectImage(null);
+    }
 
     if (!session.connected) {
       const ok = await session.connectSession();
@@ -259,9 +284,48 @@ function IsekaiSession({
   };
 
   const isFreeform = scenario?.id === "freeform";
+  const isCompanion = scenario?.id === "companion";
   const step = scenario ? scenario.steps[stepIndex] : null;
 
+  // Companion mode is a conversation, not a graded turn: whatever you say goes
+  // to Hina, she answers in Japanese, and her answer steers the world.
+  const talkToCompanion = async () => {
+    const said = answer.trim();
+    if (!said || checking || !scenario) return;
+    setChecking(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/companion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ said, scene: runningScene, level: levelId, history: conversation }),
+      });
+      if (!res.ok) {
+        setFeedback({ ok: false, text: `${COMPANION_NAME} didn't catch that — try again.` });
+        return;
+      }
+      const data: CompanionReply = await res.json();
+
+      setConversation((c) => [...c, { role: "you", text: said }, { role: "companion", text: data.reply }]);
+      setCompanionLine(data);
+      setAnswer("");
+      setTurns((t) => t + 1);
+      speak(data.reply);
+
+      if (data.sceneAddEn) {
+        const next = addEvent(sceneEvents, { text: data.sceneAddEn, source: "companion", said });
+        setSceneEvents(next);
+        const nextScene = withCompanion(composeScene(scenario.basePrompt, next));
+        pendingSteer.current = nextScene;
+        session.setPrompt(nextScene);
+      }
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const submitAnswer = async () => {
+    if (isCompanion) return talkToCompanion();
     if ((!isFreeform && !step) || !answer.trim() || checking) return;
     setChecking(true);
     setFeedback(null);
@@ -501,7 +565,7 @@ function IsekaiSession({
               </div>
             )}
 
-            {phase === "playing" && narration && (
+            {phase === "playing" && narration && !isCompanion && (
               <Narration
                 tokens={narration.tokens}
                 english={narration.english}
@@ -512,10 +576,35 @@ function IsekaiSession({
               />
             )}
 
-            {phase === "playing" && (isFreeform || step) && (
+            {phase === "playing" && isCompanion && companionLine && (
+              <div className="companion-line">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="companion-avatar" src={COMPANION_IMAGE} alt="" />
+                <div className="companion-speech">
+                  <span className="companion-name">{COMPANION_NAME}</span>
+                  <Narration
+                    tokens={companionLine.tokens}
+                    english={companionLine.replyEn}
+                    savedSurfaces={savedSurfaces}
+                    onSaveWord={handleSaveWord}
+                    onReplay={() => speak(companionLine.reply)}
+                    speaking={speaking}
+                  />
+                </div>
+              </div>
+            )}
+
+            {phase === "playing" && (isCompanion || isFreeform || step) && (
               <>
                 <div className="isekai-objective">
-                  {isFreeform ? (
+                  {isCompanion ? (
+                    <>
+                      <div className="label">Say anything to {COMPANION_NAME}, in Japanese</div>
+                      <div className="objective-en">
+                        She&rsquo;ll answer — and the world moves with her.
+                      </div>
+                    </>
+                  ) : isFreeform ? (
                     <>
                       <div className="label">Your turn — describe anything, in Japanese</div>
                       <div className="objective-en">
@@ -571,9 +660,9 @@ function IsekaiSession({
                   </div>
                 )}
 
-                {isFreeform && (
+                {(isFreeform || isCompanion) && (
                   <button className="isekai-finish" onClick={() => setPhase("complete")}>
-                    Finish this world
+                    {isCompanion ? "End the walk" : "Finish this world"}
                   </button>
                 )}
               </>
@@ -763,6 +852,22 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
               </span>
             </button>
           )}
+
+          <button
+            className="scenario-card scenario-card-companion"
+            style={{ "--card-art": `url(${COMPANION_IMAGE})` } as CSSProperties}
+            onClick={() => onPick(buildCompanionScenario())}
+          >
+            <span className="scenario-index">話す</span>
+            <span className="scenario-body">
+              <span className="scenario-jp">ひな</span>
+              <span className="scenario-en">Walk and talk with Hina</span>
+              <span className="scenario-steps">Free conversation · she changes the world</span>
+            </span>
+            <span className="scenario-arrow">
+              <ArrowRightIcon />
+            </span>
+          </button>
         </div>
       </div>
     </>
