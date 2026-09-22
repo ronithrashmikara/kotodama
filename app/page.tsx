@@ -1,7 +1,7 @@
 import { BuilderBadge } from "@/components/builder-badge";
 import { IsekaiGame } from "@/components/isekai-game";
 
-const GITHUB_URL = "https://github.com/ronithrashmikara/kotodama";
+const GITHUB_URL = "https://github.com/ronithrashmikara/yume";
 
 export default function Home() {
   return (

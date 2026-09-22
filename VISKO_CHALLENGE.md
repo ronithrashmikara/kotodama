@@ -41,4 +41,4 @@ Blocked on Reactor API key approval (requested, followed up by email). Everythin
 ## Where It Lives
 
 - **Local folder:** `C:\Users\Ronit\Downloads\Isekai`
-- **GitHub (private):** https://github.com/ronithrashmikara/kotodama
+- **GitHub (private):** https://github.com/ronithrashmikara/yume
