@@ -1,14 +1,14 @@
-# Kotodama 言霊
+# Yume 夢
 
-> *ことだま — "word spirit": the old Japanese belief that spoken words carry the power to shape reality.*
+> *ゆめ — "dream": you've been pulled into a living dream, and the old belief of* kotodama (言霊) *holds here — spoken words carry the power to shape reality.*
 
-An immersive Japanese language-learning game built on [Orbis](https://www.reactor.inc/models/visko-orbis-stable), Visko's real-time steerable video model. You're pulled into a living, AI-generated world — and the only way to change it is to correctly describe the change **in Japanese**. Get it right, and the world visibly moves, live, in front of you.
+An immersive Japanese language-learning game built on [Orbis](https://www.reactor.inc/models/visko-orbis-stable), Visko's real-time steerable video model. You're pulled into a living, AI-generated dream world — and the only way to change it is to correctly describe the change **in Japanese**. Get it right, and the world visibly moves, live, in front of you.
 
 Built for the [Visko Orbis Online Challenge](https://www.visko.ai/challenge/orbis-september-2026).
 
 ## The idea
 
-Most language apps test you with flashcards and multiple choice. Kotodama tests you with **consequence**: you type or speak a Japanese sentence, and if — and only if — it actually communicates the target meaning, the live video world reacts. Say "ねこが こうえんに います" and a cat appears in the park, on screen, within about two seconds. Say something that doesn't land, and the world just... stays still.
+Most language apps test you with flashcards and multiple choice. Yume tests you with **consequence**: you type or speak a Japanese sentence, and if — and only if — it actually communicates the target meaning, the live video world reacts. Say "ねこが こうえんに います" and a cat appears in the park, on screen, within about two seconds. Say something that doesn't land, and the world just... stays still.
 
 That's comprehensible output made visible. It's also the whole reason this has to be built on a *live, steerable* video model rather than a one-shot generator — the world has to keep running and keep reacting to unpredictable input, turn after turn, which is exactly what Orbis's chunked `set_prompt` steering is designed for.
 
@@ -47,7 +47,7 @@ Open <http://localhost:3000>, pick a world, and start talking to it.
 ```
 data/scenarios.json         The three worlds: base scene prompt + a chain of objectives
 lib/scenarios.ts            Scenario types + the offline keyword-match grader
-components/isekai-game.tsx  The whole game: scenario picker, live turn loop, Orbis steering
+components/isekai-game.tsx  The whole game: scenario picker, live turn loop, Orbis steering (Yume)
 app/api/check-answer/       Grades a learner's sentence (Gemini, or offline fallback)
 app/api/tts/                Proxies Fish Audio for spoken feedback
 app/api/token/, hooks/…     Unmodified from the Visko starter — token minting + Orbis session
