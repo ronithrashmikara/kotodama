@@ -29,7 +29,11 @@ export function BuilderBadge() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="builder-popover-avatar" src="/art/honeybird.png" alt="" />
           <span className="builder-popover-eyebrow">Made by</span>
-          <span className="builder-popover-name">Honey Bird</span>
+          {/* Hovering the name swaps the handle for the real one. */}
+          <span className="builder-popover-name" tabIndex={0}>
+            <span className="handle">Honey Bird</span>
+            <span className="real">Ronith Rashmikara</span>
+          </span>
           <p className="builder-popover-text">
             Yume was designed and built by <strong>Honey Bird</strong> for the Visko Orbis Online
             Challenge — a Japanese language-learning game where your words shape a living, AI-generated
@@ -42,12 +46,11 @@ export function BuilderBadge() {
         className="builder-fab"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label="Who made this — Ronith Rashmikara"
+        aria-label="Who made this"
+        title="Who made this?"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/art/honeybird.png" alt="" />
-        {/* Expands on hover into the maker's name. */}
-        <span className="builder-fab-name">Ronith Rashmikara</span>
       </button>
     </div>
   );
