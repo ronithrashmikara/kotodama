@@ -1,6 +1,6 @@
 const fs = require('fs');
-const mdPath = 'C:\\Users\\Ronit\\Downloads\\Isekai\\CHALLENGE_EXECUTION_PLAN.md';
-const htmlPath = 'C:\\Users\\Ronit\\Downloads\\Isekai\\CHALLENGE_EXECUTION_PLAN.html';
+const mdPath = 'C:\\Users\\Ronit\\Downloads\\Isekai\\indser\\docs\\CHALLENGE_EXECUTION_PLAN.md';
+const htmlPath = 'C:\\Users\\Ronit\\Downloads\\Isekai\\indser\\docs\\CHALLENGE_EXECUTION_PLAN.html';
 const md = fs.readFileSync(mdPath, 'utf8');
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>').replace(/`([^`]+)`/g, '<code>$1</code>');
