@@ -263,6 +263,20 @@ function IsekaiSession({
     }
   };
 
+  // Orbis bills for every wall-clock second the GPU is held, and the token
+  // caps a session at 300s — so the world would otherwise vanish mid-take with
+  // no warning. This tracks elapsed time and turns amber as the cap nears.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!session.runStarted) {
+      setElapsed(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [session.runStarted]);
+
   const statusLabel =
     session.status === "ready" ? "Live" : session.status === "connecting" ? "Connecting" : session.status;
 
@@ -306,6 +320,22 @@ function IsekaiSession({
                 {statusLabel}
               </span>
             </div>
+
+            {session.runStarted && (
+              <div className={`session-meter ${elapsed >= 240 ? "warn" : ""}`}>
+                <span className="session-meter-time">
+                  {String(Math.floor(elapsed / 60)).padStart(2, "0")}:
+                  {String(elapsed % 60).padStart(2, "0")}
+                </span>
+                <span className="session-meter-bar">
+                  <span
+                    className="session-meter-fill"
+                    style={{ width: `${Math.min(100, (elapsed / 300) * 100)}%` }}
+                  />
+                </span>
+                <span className="session-meter-cost">${(elapsed * 0.0097).toFixed(2)}</span>
+              </div>
+            )}
 
             {scenario && !isFreeform && (
               <div className="isekai-progress">
