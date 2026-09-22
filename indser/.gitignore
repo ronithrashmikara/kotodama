@@ -1,0 +1,6 @@
+tools/
+reference/
+assets/preview-*.png
+assets/slide-*-preview.png
+assets/layout-check.html
+__pycache__/

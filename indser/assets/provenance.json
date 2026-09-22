@@ -1,0 +1,20 @@
+{
+  "model": "openai/gpt-image-2.5/sunburst/text-to-image",
+  "provider": "fal.ai",
+  "quality": "high",
+  "requestedDimensions": {
+    "width": 1280,
+    "height": 960
+  },
+  "purpose": "Concept presentation artwork, not gameplay evidence",
+  "images": [
+    {
+      "name": "dream-world",
+      "url": "https://v3b.fal.media/files/b/0aab75fc/ptuyEnn8-U7dVnpQi0mIt_vIzDBHP8.webp"
+    },
+    {
+      "name": "words-become-world",
+      "url": "https://v3b.fal.media/files/b/0aab75fc/1oiAjMyZDe3vyYZYlRaOR_s8om0H0Q.webp"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "tag": "01 / THE IDEA",
+    "title": "What if your words<br>could change a world?",
+    "sub": "Yume 夢 · a living Japanese-learning game",
+    "time": "00:00–00:25",
+    "say": "What if your words could change a world? I’m Ronit, and this is Yume, a Japanese-learning game built around a simple idea: when your meaning is understood, the world responds. Yume means dream. I wanted to turn language practice into a place you can shape, not just a question you can answer.",
+    "cue": "Start looking at the camera. This is concept artwork, not a product screenshot. Transition to the motivation, then the real demo on slide 3."
+  },
+  {
+    "tag": "02 / WHY I BUILT IT",
+    "title": "Less guessing.<br>More expressing.",
+    "sub": "I wanted Japanese practice where your words actually do something.",
+    "time": "00:25–00:50",
+    "say": "Recognizing an answer and expressing an idea are different experiences. I wanted practice where Japanese does something, rather than only earning a check mark. Yume takes inspiration from kotodama, the idea that words can shape reality. The product turns that metaphor into a small, repeatable interaction.",
+    "cue": "This is a product-design motivation, not a fabricated personal learning history. Tell a true personal example instead if you have one."
+  },
+  {
+    "tag": "03 / WHAT I BUILT + DEMO",
+    "title": "Your Japanese is<br>the next move.",
+    "sub": "An objective. Your words. Feedback. A change in the running world.",
+    "time": "00:50–01:45",
+    "say": "Here is the loop. The objective asks for a cat in the park. I type, “こうえんに ねこが います.” It means, “There is a cat in the park.” Yume checks the meaning and sends the accepted scene change to Orbis. Now I try an unrelated answer at the next objective. I get feedback, without a new steering command. Then I correct it: “いぬが ねこの となりに います.” A dog is next to the cat. The next change goes into the same running session. The prototype also includes three guided worlds, four difficulty levels, narration, and vocabulary saving.",
+    "cue": "RECORD LATER. Allow 15–20 seconds within this section for real responses. Show one uninterrupted correct turn, an incorrect English answer such as “I like pizza,” then the corrected dog turn. Use sentence-level difficulty. Only describe results visible in the recording. Do not claim rejection freezes the existing video. Mic input is optional, text is the reliable recording path."
+  },
+  {
+    "tag": "04 / HOW IT WORKS",
+    "title": "Language becomes<br>a control signal.",
+    "sub": "A focused stack. One clear role for each layer.",
+    "time": "01:45–02:30",
+    "say": "The app uses Next.js, React, and TypeScript. A server route sends the learner’s answer to Groq for language-model inference. In guided mode, an accepted answer unlocks a predefined scene addition. The app updates the running scene prompt, and the Reactor SDK sends set_prompt to steer Visko Orbis over the live connection. Fish Audio provides Japanese speech, browser speech recognition supports microphone input, and local storage keeps saved vocabulary. fal provides supporting artwork, including these presentation illustrations. It is not the live-video engine.",
+    "cue": "User-confirmed provider: Groq. Verify the final deployed Groq model before publishing. Do not invent a model name or measured speedup. Narration uses scene text, not visual frame analysis. Fixed-scenario keyword fallback does not make the whole app offline. Brand logos are local project assets, not generated imitations."
+  },
+  {
+    "tag": "05 / WHY ORBIS MATTERS",
+    "title": "The video is not decoration.<br>It is the response.",
+    "sub": "The learner’s next answer influences a world that is already running.",
+    "time": "02:30–02:55",
+    "say": "Orbis matters because the learner keeps interacting with an already-running world. A fixed clip cannot respond to a new answer. Yume uses live steering as part of the learning mechanic: input, interpretation, consequence, and another attempt. That is the distinction I want this prototype to demonstrate, rather than just showing an attractive generated video.",
+    "cue": "Show actual consecutive turns if footage is available. Do not promise perfect persistence, instant response, or objectively improved learning without evidence."
+  },
+  {
+    "tag": "06 / YUME 夢",
+    "title": "Don’t just learn the word.<br>Give it a world.",
+    "sub": "Speak Japanese. Watch your words become reality.",
+    "time": "02:55–03:15",
+    "say": "The next step is to validate the live loop reliably and test the experience with learners. I want to understand whether people can express the intended meaning, recover from mistakes, and want to try another turn. That is Yume: a dream you shape, one sentence at a time. Thank you.",
+    "cue": "Look back at the camera. Add verified public app and repository links in your final edit. Update future work after testing, but do not invent completed validation or user results."
+  }
+]
