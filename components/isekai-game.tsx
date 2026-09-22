@@ -107,20 +107,36 @@ function IsekaiSession({
   useEffect(() => setVocab(loadVocab()), []);
 
   // One narrator at a time — a new line cuts off whatever is still playing.
-  const speak = useCallback((text: string) => {
-    if (!text.trim()) return;
-    try {
-      audioRef.current?.pause();
-      const audio = new Audio(`/api/tts?text=${encodeURIComponent(text)}`);
-      audioRef.current = audio;
-      setSpeaking(true);
-      audio.onended = () => setSpeaking(false);
-      audio.onerror = () => setSpeaking(false);
-      void audio.play().catch(() => setSpeaking(false));
-    } catch {
-      setSpeaking(false);
-    }
+  // Plays lines back to back, so Hina can say something in Japanese and then
+  // echo it in English without the second line cutting off the first.
+  const speakSequence = useCallback((lines: string[]) => {
+    const queue = lines.map((l) => l.trim()).filter(Boolean);
+    if (!queue.length) return;
+
+    audioRef.current?.pause();
+    setSpeaking(true);
+
+    let index = 0;
+    const playNext = () => {
+      if (index >= queue.length) {
+        setSpeaking(false);
+        return;
+      }
+      try {
+        const audio = new Audio(`/api/tts?text=${encodeURIComponent(queue[index++])}`);
+        audioRef.current = audio;
+        audio.onended = playNext;
+        // A failed line shouldn't strand the rest of the queue.
+        audio.onerror = playNext;
+        void audio.play().catch(playNext);
+      } catch {
+        playNext();
+      }
+    };
+    playNext();
   }, []);
+
+  const speak = useCallback((text: string) => speakSequence([text]), [speakSequence]);
 
   const narrateScene = useCallback(
     async (scene: string) => {
@@ -310,7 +326,9 @@ function IsekaiSession({
       setCompanionLine(data);
       setAnswer("");
       setTurns((t) => t + 1);
-      speak(data.reply);
+      // Beginners hear the English echo too; past that it stays on screen only,
+      // so the Japanese keeps carrying the turn.
+      speakSequence(levelId <= 2 ? [data.reply, data.replyEn] : [data.reply]);
 
       if (data.sceneAddEn) {
         const next = addEvent(sceneEvents, { text: data.sceneAddEn, source: "companion", said });
@@ -587,7 +605,14 @@ function IsekaiSession({
                     english={companionLine.replyEn}
                     savedSurfaces={savedSurfaces}
                     onSaveWord={handleSaveWord}
-                    onReplay={() => speak(companionLine.reply)}
+                    englishAlwaysOn
+                    onReplay={() =>
+                      speakSequence(
+                        levelId <= 2
+                          ? [companionLine.reply, companionLine.replyEn]
+                          : [companionLine.reply],
+                      )
+                    }
                     speaking={speaking}
                   />
                 </div>

@@ -11,6 +11,8 @@ type NarrationProps = {
   onSaveWord: (token: NarrationToken) => void;
   onReplay: () => void;
   speaking: boolean;
+  /** Bilingual speakers show their English inline rather than behind a toggle. */
+  englishAlwaysOn?: boolean;
 };
 
 export function Narration({
@@ -20,11 +22,12 @@ export function Narration({
   onSaveWord,
   onReplay,
   speaking,
+  englishAlwaysOn = false,
 }: NarrationProps) {
   // Which token's gloss is pinned open (click), vs. merely hovered.
   const [pinned, setPinned] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
-  const [showEnglish, setShowEnglish] = useState(false);
+  const [showEnglish, setShowEnglish] = useState(englishAlwaysOn);
   const [justSaved, setJustSaved] = useState<number | null>(null);
 
   // A double-click also fires two click events, so a plain onClick would
