@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yume — Scope &amp; Status</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: #232720; background: #fff;
+    font: 10.5pt/1.62 "Segoe UI", -apple-system, system-ui, sans-serif;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  h1, h2, h3 { line-height: 1.22; margin: 0; }
+  h1 { font-size: 30pt; letter-spacing: -.6pt; }
+  h2 {
+    font-size: 15pt; margin: 26pt 0 9pt; padding-bottom: 5pt;
+    border-bottom: 1.4pt solid #c9d2bb; letter-spacing: -.2pt;
+    break-after: avoid;
+  }
+  h3 { font-size: 11.5pt; margin: 15pt 0 5pt; color: #3c4636; break-after: avoid; }
+  p { margin: 0 0 8pt; }
+  ul { margin: 0 0 9pt; padding-left: 16pt; }
+  li { margin: 0 0 4pt; }
+  small { color: #6d7663; }
+  code { font: 9.2pt ui-monospace, "Cascadia Mono", Consolas, monospace; background: #f1f3ec; padding: 1pt 4pt; border-radius: 3pt; }
+
+  .cover { border-bottom: 2.4pt solid #24291f; padding-bottom: 16pt; margin-bottom: 4pt; }
+  .kicker { font-size: 8.6pt; letter-spacing: 2.4pt; color: #7d876d; font-weight: 700; text-transform: uppercase; }
+  .lede { font-size: 12.5pt; color: #4b5544; margin-top: 10pt; max-width: 150mm; }
+  .meta { margin-top: 13pt; font-size: 9pt; color: #77816c; }
+
+  table { width: 100%; border-collapse: collapse; margin: 0 0 10pt; font-size: 9.6pt; }
+  th, td { text-align: left; padding: 5.5pt 8pt; border-bottom: .8pt solid #dfe4d8; vertical-align: top; }
+  th { background: #f2f5ec; font-size: 8.4pt; letter-spacing: .7pt; text-transform: uppercase; color: #5e6853; }
+  td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  .pill { display: inline-block; font-size: 8.2pt; font-weight: 700; letter-spacing: .5pt; padding: 1.5pt 7pt; border-radius: 999pt; text-transform: uppercase; }
+  .done { background: #e2efd9; color: #3c5a2b; }
+  .part { background: #fcf0d5; color: #7a5c14; }
+  .todo { background: #f7ddd9; color: #8c3327; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22pt; }
+  .card { border: 1pt solid #d8ded0; border-left: 3pt solid #9bb07f; border-radius: 4pt; padding: 10pt 13pt; margin-bottom: 9pt; break-inside: avoid; }
+  .card h3 { margin-top: 0; }
+  .card p { margin-bottom: 0; font-size: 9.8pt; }
+  .card.warn { border-left-color: #d9a54a; }
+  .card.risk { border-left-color: #c96a5a; }
+
+  .flow { display: flex; align-items: stretch; gap: 0; margin: 4pt 0 12pt; }
+  .flow .box { flex: 1; border: 1pt solid #c3cdb2; border-radius: 5pt; padding: 9pt 11pt; background: #f7f9f2; }
+  .flow .box.b2 { background: #fcf6e2; border-color: #dbcfa4; }
+  .flow .box.b3 { background: #eeeaf4; border-color: #c9bed8; }
+  .flow .box b { display: block; font-size: 10pt; margin-bottom: 3pt; }
+  .flow .box p { font-size: 8.8pt; margin: 0; color: #66705a; }
+  .flow .arr { display: grid; place-items: center; width: 34pt; color: #93a081; font-size: 14pt; }
+
+  .quote { border-left: 3pt solid #c9d2bb; padding: 2pt 0 2pt 12pt; margin: 9pt 0; color: #4f594700; }
+  .quote { color: #4f5947; font-style: italic; }
+  .break { break-before: page; }
+  footer { margin-top: 20pt; padding-top: 9pt; border-top: 1pt solid #dfe4d8; font-size: 8.4pt; color: #828b76; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">Visko Orbis Challenge · Scope &amp; Status</div>
+  <h1>Yume 夢</h1>
+  <p class="lede">A Japanese-learning game where the only way to change the world in front of you is to say it in Japanese — built on a live, steerable video model.</p>
+  <p class="meta"><b>Ronit Rashmikara</b> · deadline 1 October 2026 · repository <code>ronithrashmikara/kotodama</code></p>
+</div>
+
+<h2>1. The idea in one paragraph</h2>
+<p>Most language apps test <b>recognition</b> — pick the right answer from four. Yume tests <b>expression</b>, and then shows you the consequence. You are dropped into a living, AI-generated world. It narrates itself to you in Japanese. When you say something back and the meaning lands, the live video steers to match within seconds. When it does not land, nothing moves. The video itself is the feedback.</p>
+<p>The name comes from <i>kotodama</i> (言霊), the old belief that spoken words carry the power to shape reality. That metaphor is the product.</p>
+
+<h2>2. Why this needs a live model</h2>
+<p>This is the highest-weighted judging criterion, so it is worth stating precisely. Two properties make pre-rendered video impossible here:</p>
+<ul>
+  <li><b>The next sentence is unpredictable.</b> A learner can say anything, at any level, in any order. There is no finite set of clips to pre-generate.</li>
+  <li><b>The world keeps moving when you don't.</b> Every ~22 seconds the scene changes on its own, and every third change asks something of you. A clip cannot keep going while you hesitate.</li>
+</ul>
+<p>The second property is the stronger argument, and it is also nearly free: Orbis bills for every wall-clock second the GPU is held whether the scene changes or not. A static scene is wasted spend. An evolving one costs the same.</p>
+
+<h2>3. What is built today</h2>
+<table>
+  <tr><th style="width:27%">Area</th><th style="width:53%">What it does</th><th style="width:20%">Status</th></tr>
+  <tr><td><b>Core loop</b></td><td>Live Orbis video; Japanese input graded on meaning; correct answers steer the running scene via <code>set_prompt</code></td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Five ways to play</b></td><td>Park, Classroom, Night City (scripted objective chains), free-form world creation from an English idea, and companion mode</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Difficulty ladder</b></td><td>Four levels (single word → phrase → sentence → description) scaling both narration complexity and the grading bar</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Living world</b></td><td>Ambient drift every ~22s; every third beat is a "stakes" beat needing a spoken response; can be paused</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Hina (companion)</b></td><td>Bilingual companion; Groq writes her reply, Fish Audio speaks it, her reply steers the video</td><td><span class="pill part">Needs visual check</span></td></tr>
+  <tr><td><b>Narration</b></td><td>Scene described in Japanese, pre-segmented server-side into hoverable words with reading + gloss</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Vocabulary + SRS</b></td><td>Double-click any word to save; Leitner ladder returns it after 1/2/4/8/16 days; a miss drops it to box 1</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Always-on speech</b></td><td>Mic arms itself when a world starts; live interim transcript; auto-sends after 1.1s of silence; deaf while the app itself is speaking</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Story log</b></td><td>End-of-run replay distinguishing what you changed from what the world did</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Site &amp; polish</b></td><td>Landing page, fal-generated art, real sponsor logos, reduced-motion + focus states, mobile breakpoints; assets cut 5.9 MB → 1.8 MB</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Recording kit</b></td><td>Free preflight check, in-HUD live cost meter, one-command screen+mic recorder, shot-by-shot runsheet</td><td><span class="pill done">Working</span></td></tr>
+  <tr><td><b>Demo video</b></td><td>Not yet recorded; landing page still shows a placeholder</td><td><span class="pill todo">Not started</span></td></tr>
+</table>
+
+<h2>4. How it fits together</h2>
+<div class="flow">
+  <div class="box"><b>You say it</b><p>Japanese, spoken or typed. Always-on recognition — nothing to press.</p></div>
+  <div class="arr">→</div>
+  <div class="box b2"><b>Understand</b><p>GPT-OSS 120B on Groq. Grades meaning, writes Hina's reply, drifts the world. ~1.4 s.</p></div>
+  <div class="arr">→</div>
+  <div class="box b3"><b>Steer the world</b><p>Reactor SDK → Visko Orbis over WebRTC. The running scene changes; no new clip.</p></div>
+</div>
+<p style="text-align:center;color:#8a937c;font-size:9pt;margin-top:-4pt">↺ the changed world narrates itself back in Japanese, and the loop restarts</p>
+
+<h3>Supporting layers</h3>
+<ul>
+  <li><b>Fish Audio</b> — speaks narration and Hina, in Japanese and English.</li>
+  <li><b>Next.js 16 / React 19 / TypeScript</b> — app shell and five API routes (<code>check-answer</code>, <code>narrate</code>, <code>drift</code>, <code>companion</code>, <code>tts</code>).</li>
+  <li><b>localStorage</b> — saved vocabulary and SRS schedule. No account, no database.</li>
+  <li><b>fal.ai</b> — all backgrounds, the favicon, the mascot, and the presentation artwork. Not the live-video engine.</li>
+</ul>
+
+<h3>Two design decisions worth defending</h3>
+<div class="card">
+  <h3>The scene is an event log, not a growing string</h3>
+  <p>Each change is recorded as an event with its source. One structure produces both the Orbis prompt and the end-of-run story, and it caps how many recent beats reach the prompt — without that cap, a world drifting every 22 s would grow the prompt without bound and the earliest details would compete with the newest for the model's attention.</p>
+</div>
+<div class="card">
+  <h3>Narration arrives pre-segmented from the server</h3>
+  <p>Japanese has no spaces, so making every word individually hoverable normally means shipping a morphological analyser (~15 MB) to the browser. Instead the model returns the sentence already split into units with readings and glosses, and the concatenation is validated against the original.</p>
+</div>
+
+<div class="break"></div>
+
+<h2>5. What is verified, and what is not</h2>
+<p>Stated honestly, because the difference matters for the submission.</p>
+<table>
+  <tr><th style="width:38%">Claim</th><th style="width:38%">Evidence</th><th style="width:24%">Status</th></tr>
+  <tr><td>Reactor key provisions a real GPU</td><td>Live session reached <code>ACTIVE</code> in ~3 s, then terminated cleanly</td><td><span class="pill done">Measured</span></td></tr>
+  <tr><td>Orbis renders and steers in-browser</td><td>Screenshot of a cat rendered in the Park scenario after a graded turn</td><td><span class="pill done">Observed</span></td></tr>
+  <tr><td>Grading works end to end</td><td>Level-1 single word <code>ねこ</code> accepted; full sentence corrected naturally; ~1 s round trip</td><td><span class="pill done">Measured</span></td></tr>
+  <tr><td>Narration segments correctly</td><td>9 tokens returned, concatenation matched the sentence exactly</td><td><span class="pill done">Measured</span></td></tr>
+  <tr><td>Hina steers the world</td><td>4 / 4 test turns produced a scene change; ~1.4 s average</td><td><span class="pill done">Measured</span></td></tr>
+  <tr><td>Ambient + stakes beats generate</td><td>Ambient 2.6 s cold, stakes beat 0.8 s, both usable</td><td><span class="pill done">Measured</span></td></tr>
+  <tr><td>SRS schedule behaves</td><td>New word due immediately; correct answers climb 2 → 4 → 8 d; a miss returns it next day</td><td><span class="pill done">Measured</span></td></tr>
+  <tr><td><b>Hina stays visually consistent</b></td><td>Reference-frame conditioning + locked text description are implemented, but nobody has watched her across several steers</td><td><span class="pill todo">Unverified</span></td></tr>
+  <tr><td>Steering latency (answer → visible change)</td><td>Never timed against a stopwatch</td><td><span class="pill todo">Unverified</span></td></tr>
+</table>
+
+<h2>6. What it costs to run</h2>
+<p>Rates read live from Reactor's pricing API, not estimated.</p>
+<table>
+  <tr><th style="width:52%">Item</th><th style="width:24%">Rate</th><th style="width:24%">Notes</th></tr>
+  <tr><td>Visko Orbis Stable</td><td class="num">$0.0097 / second</td><td>= $0.582 / minute</td></tr>
+  <tr><td>A 2-minute demo take</td><td class="num">≈ $1.16</td><td>Rehearsal ≈ $0.29</td></tr>
+  <tr><td>Worst case, one orphaned session</td><td class="num">$2.91</td><td>Token caps sessions at 300 s</td></tr>
+  <tr><td>$250 of credit</td><td class="num">≈ 429 minutes</td><td>≈ 214 full 2-minute takes</td></tr>
+  <tr><td>Groq GPT-OSS 120B</td><td class="num">$0.15 / $0.60 per 1M</td><td>Fractions of a cent per turn</td></tr>
+  <tr><td>Verification spend to date</td><td class="num">$0.79</td><td>Two live session tests</td></tr>
+</table>
+<div class="card warn">
+  <h3>Three cost traps</h3>
+  <p><b>Idle bills at full rate.</b> Reactor meters every wall-clock second the GPU is held, "even if you are idle". <b>Billing granularity is ambiguous</b> — docs say per session-minute, the pricing API quotes per-second; assume short aborted takes round up. <b>Sessions hard-stop at 300 s</b>, so a take running past 5:00 loses the world mid-shot. The in-HUD meter turns amber at 4:00 for exactly this reason.</p>
+</div>
+
+<h2>7. What we could build next</h2>
+<p>Ordered by judging impact per hour of work. The real-time story is already strong, so the marginal value of more mechanics is lower than the marginal value of a convincing demo — but there is room for both.</p>
+
+<div class="grid2">
+  <div class="card">
+    <h3>Barge-in <small>· ~2 h</small></h3>
+    <p>Interrupt Hina mid-sentence and she stops and listens. We already track when she is speaking, so the machinery exists. This is the single change that most makes her feel alive rather than turn-based.</p>
+  </div>
+  <div class="card">
+    <h3>Silence she fills <small>· ~2 h</small></h3>
+    <p>Say nothing for ~15 s and she prompts you — <i>どうしたの？</i> — or points something out. A conversation that survives hesitation reads as genuinely live on camera.</p>
+  </div>
+  <div class="card">
+    <h3>Listening comprehension <small>· ~3 h</small></h3>
+    <p>She asks you to do something and the world only moves if you understood <i>her</i>. The app currently tests production only; this adds the input half, which is what actually builds fluency.</p>
+  </div>
+  <div class="card">
+    <h3>Pronunciation feedback <small>· ~3 h</small></h3>
+    <p>Web Speech returns a confidence score per result. Low confidence on a word you meant to say is a mispronunciation signal she can gently echo back. Genuinely hard for a textbook to do.</p>
+  </div>
+  <div class="card">
+    <h3>Two more worlds <small>· ~2 h</small></h3>
+    <p>Cheap and safe. Makes the app feel fuller on camera and demonstrates that the scenario format generalises.</p>
+  </div>
+  <div class="card">
+    <h3>Shareable story card <small>· ~2 h</small></h3>
+    <p>Render the end-of-run story log as an image. Turns a session into something a learner would post, which is the cheapest distribution a language app can have.</p>
+  </div>
+</div>
+
+<h2>8. Risks and open questions</h2>
+<div class="card risk">
+  <h3>Hina's visual consistency is unproven</h3>
+  <p>The headline feature rests on Orbis honouring a reference frame across repeated <code>set_prompt</code> calls. Both mitigations are implemented (image conditioning + the locked description restated every steer), but if she visibly becomes a different person after a few turns, the companion demo needs rethinking. <b>Two minutes of browser testing resolves this.</b></p>
+</div>
+<div class="card risk">
+  <h3>The repository is private</h3>
+  <p>Judges cannot read the code. Git history has been scanned and contains no committed secrets, so it is safe to publish — but it must actually be flipped before submission.</p>
+</div>
+<div class="card warn">
+  <h3>Groq free-tier limits during a long demo</h3>
+  <p>Living-world drift plus narration is roughly 5–6 calls per minute. Comfortable against 30 RPM, but a long unattended session could approach the 1,000/day cap.</p>
+</div>
+<div class="card warn">
+  <h3>Everything is single-player and local</h3>
+  <p>Vocabulary lives in <code>localStorage</code>: per-browser, no account, no sync. Correct for a hackathon prototype, and worth saying out loud rather than implying a backend exists.</p>
+</div>
+
+<h2>9. Before submission</h2>
+<ul>
+  <li>Verify Hina stays visually consistent across several steers <span class="pill todo">blocking</span></li>
+  <li>Rehearsal take (~$0.29) to calibrate steering latency, then record the real 2-minute demo</li>
+  <li>Embed the video on the landing page, replacing the placeholder</li>
+  <li>Make the repository public <span class="pill todo">blocking</span></li>
+  <li>Complete the submission form; verify every link after pasting</li>
+  <li>Confirm no API key is visible in any recorded frame</li>
+</ul>
+
+<footer>
+  Yume 夢 · Ronit Rashmikara · prepared for the Visko Orbis Online Challenge.
+  Figures verified against live APIs where stated; unverified claims are marked as such.
+</footer>
+
+</body>
+</html>
