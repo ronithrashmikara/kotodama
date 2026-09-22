@@ -669,6 +669,8 @@ function IsekaiSession({
                     onResult={(text) => setAnswer(text)}
                     onSpeechEnd={() => void submitAnswer()}
                     disabled={checking}
+                    autoStart={phase === "playing"}
+                    holdWhileSpeaking={speaking}
                   />
                   <button
                     type="submit"
@@ -1055,17 +1057,20 @@ type SpeechRecognitionCtor = new () => MinimalSpeechRecognition;
 
 // Minimal optional voice input using the browser's built-in speech
 // recognition — no server key required, silently hidden if unsupported.
-// Hands-free mode: once armed, it keeps listening so you can just talk to the
-// world instead of clicking before every sentence. Browsers cut recognition
-// off every ~60s on their own, so it self-restarts until you disarm it.
+// Always-on listening: it arms itself when a world starts, so there is nothing
+// to click and nothing to send. You just talk.
 function MicButton({
   onResult,
   onSpeechEnd,
   disabled,
+  autoStart,
+  holdWhileSpeaking,
 }: {
   onResult: (text: string) => void;
   onSpeechEnd: () => void;
   disabled: boolean;
+  autoStart: boolean;
+  holdWhileSpeaking: boolean;
 }) {
   const [armed, setArmed] = useState(false);
   const [hearing, setHearing] = useState(false);
@@ -1073,63 +1078,70 @@ function MicButton({
   const armedRef = useRef(false);
   const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The recognition handlers are installed once but fire much later, so they
-  // must not close over a stale submitAnswer — that would submit an empty
-  // answer. Keep the callbacks in a ref that always holds the latest render's.
+  // True while our own TTS is talking. Without this the microphone hears the
+  // narrator, transcribes her as the player, and she answers herself in a
+  // loop — burning Groq calls and steering the world off nonsense input.
+  const holdRef = useRef(false);
+  holdRef.current = holdWhileSpeaking;
+
+  // Handlers are installed once but fire seconds later, so they read the
+  // latest callbacks from a ref rather than closing over stale ones.
   const handlers = useRef({ onResult, onSpeechEnd });
   handlers.current = { onResult, onSpeechEnd };
 
-  const getCtor = (): SpeechRecognitionCtor | null => {
-    if (typeof window === "undefined") return null;
+  const supported =
+    typeof window !== "undefined" &&
+    Boolean(
+      (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
+        .SpeechRecognition ??
+        (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition,
+    );
+
+  const start = useCallback(() => {
     const w = window as unknown as {
       SpeechRecognition?: SpeechRecognitionCtor;
       webkitSpeechRecognition?: SpeechRecognitionCtor;
     };
-    return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-  };
+    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!Ctor) return;
 
-  const Ctor = getCtor();
-
-  useEffect(
-    () => () => {
-      armedRef.current = false;
-      if (submitTimer.current) clearTimeout(submitTimer.current);
-      recognitionRef.current?.stop();
-    },
-    [],
-  );
-
-  if (!Ctor) return null;
-
-  const start = () => {
     const recognition = new Ctor();
     recognition.lang = "ja-JP";
     recognition.continuous = true;
-    recognition.interimResults = false;
+    // Interim results give a live transcript as you speak, so the box visibly
+    // reacts rather than staying blank until you finish a sentence.
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
-      // In continuous mode results accumulate, so read the newest one.
+      if (holdRef.current) return;
+
       const results = event.results as unknown as {
         length: number;
-        [i: number]: { [j: number]: { transcript: string } };
+        [i: number]: { isFinal?: boolean; [j: number]: { transcript: string } };
       };
-      const latest = results[results.length - 1]?.[0]?.transcript?.trim() ?? "";
-      if (!latest) return;
+      const last = results[results.length - 1];
+      const text = last?.[0]?.transcript?.trim() ?? "";
+      if (!text) return;
+
       setHearing(true);
-      handlers.current.onResult(latest);
-      // Submit once they've stopped talking, so the whole turn is hands-free.
-      if (submitTimer.current) clearTimeout(submitTimer.current);
-      submitTimer.current = setTimeout(() => {
-        setHearing(false);
-        handlers.current.onSpeechEnd();
-      }, 1200);
+      handlers.current.onResult(text);
+
+      // Only a final result starts the send timer; interim ones just keep the
+      // on-screen transcript current.
+      if (last?.isFinal) {
+        if (submitTimer.current) clearTimeout(submitTimer.current);
+        submitTimer.current = setTimeout(() => {
+          setHearing(false);
+          if (!holdRef.current) handlers.current.onSpeechEnd();
+        }, 1100);
+      }
     };
 
     recognition.onerror = () => setHearing(false);
     recognition.onend = () => {
       setHearing(false);
-      // Browsers end the stream periodically; re-arm unless the user stopped.
+      // Browsers cut the stream every ~60s; restart unless we were stopped.
       if (armedRef.current) {
         try {
           recognition.start();
@@ -1141,37 +1153,67 @@ function MicButton({
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
-  };
-
-  const toggle = () => {
-    if (armed) {
-      armedRef.current = false;
-      setArmed(false);
-      setHearing(false);
-      if (submitTimer.current) clearTimeout(submitTimer.current);
-      recognitionRef.current?.stop();
-      return;
-    }
-    armedRef.current = true;
-    setArmed(true);
     try {
-      start();
+      recognition.start();
     } catch {
       armedRef.current = false;
       setArmed(false);
     }
-  };
+  }, []);
+
+  const stop = useCallback(() => {
+    armedRef.current = false;
+    setArmed(false);
+    setHearing(false);
+    if (submitTimer.current) clearTimeout(submitTimer.current);
+    recognitionRef.current?.stop();
+  }, []);
+
+  // Arm as soon as the world is live. Entering a world is itself a user
+  // gesture, which is what browsers require before opening the microphone.
+  useEffect(() => {
+    if (!autoStart || !supported || armedRef.current) return;
+    armedRef.current = true;
+    setArmed(true);
+    start();
+  }, [autoStart, supported, start]);
+
+  useEffect(
+    () => () => {
+      armedRef.current = false;
+      if (submitTimer.current) clearTimeout(submitTimer.current);
+      recognitionRef.current?.stop();
+    },
+    [],
+  );
+
+  if (!supported) return null;
+
+  const held = armed && holdWhileSpeaking;
 
   return (
     <button
       type="button"
-      className={`isekai-mic ${armed ? "armed" : ""} ${hearing ? "listening" : ""}`}
-      onClick={toggle}
+      className={`isekai-mic ${armed ? "armed" : ""} ${hearing && !held ? "listening" : ""} ${held ? "held" : ""}`}
+      onClick={() => {
+        if (armed) {
+          stop();
+          return;
+        }
+        armedRef.current = true;
+        setArmed(true);
+        start();
+      }}
       disabled={disabled}
-      title={armed ? "Hands-free on — click to stop listening" : "Hands-free — just talk"}
+      title={
+        !armed
+          ? "Microphone off — click to listen"
+          : held
+            ? "Paused while the world is speaking"
+            : "Listening — just talk"
+      }
       aria-pressed={armed}
-      aria-label={armed ? "Stop listening" : "Listen hands-free"}
+      aria-label={armed ? "Stop listening" : "Start listening"}
     >
       {armed ? <StopIcon /> : <MicIcon />}
     </button>

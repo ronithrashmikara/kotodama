@@ -1926,6 +1926,16 @@ aside code {
 
 /* Pulses only while it is actually picking up speech, so you can tell
    "armed and waiting" from "hearing you right now". */
+/* Held: our own narrator is talking, so the mic is deliberately deaf to
+   avoid transcribing her voice back as the player's. */
+.isekai-mic.held {
+  color: var(--k-text-faint);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--k-border);
+  opacity: 0.65;
+  animation: none;
+}
+
 .isekai-mic.armed.listening {
   animation: pulse 0.9s infinite;
 }
