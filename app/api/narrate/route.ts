@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getLevel } from "@/lib/levels";
-import { chatJson } from "@/lib/openrouter";
+import { chatJson } from "@/lib/groq";
 
 export const runtime = "nodejs";
 
@@ -60,10 +60,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "scene is required" }, { status: 400 });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "OPENROUTER_API_KEY is not configured" },
+      { error: "GROQ_API_KEY is not configured" },
       { status: 503 },
     );
   }

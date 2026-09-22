@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getLevel } from "@/lib/levels";
-import { chatJson } from "@/lib/openrouter";
+import { chatJson } from "@/lib/groq";
 import { localCheck, type ScenarioStep } from "@/lib/scenarios";
 
 export const runtime = "nodejs";
@@ -64,13 +64,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "learnerText is required" }, { status: 400 });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
 
   if (freeform) {
     if (!apiKey) {
       return NextResponse.json({
         correct: false,
-        feedback: "Free-form worlds need an OpenRouter API key configured on the server.",
+        feedback: "Free-form worlds need a Groq API key configured on the server.",
         correctedJapanese: "",
         sceneAddEn: "",
         method: "unavailable",
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     }
     try {
       const result = await checkFreeformAnswer(apiKey, learnerText, sceneContext ?? "", level);
-      return NextResponse.json({ ...result, method: "sonnet-5" });
+      return NextResponse.json({ ...result, method: "groq" });
     } catch (caught) {
       console.error("Freeform grading failed", caught);
       return NextResponse.json({
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
   if (apiKey) {
     try {
       const result = await checkFixedAnswer(apiKey, { learnerText, objectiveEn, sampleAnswer, level });
-      return NextResponse.json({ ...result, method: "sonnet-5" });
+      return NextResponse.json({ ...result, method: "groq" });
     } catch (caught) {
       console.error("Grading failed, falling back to offline check", caught);
     }

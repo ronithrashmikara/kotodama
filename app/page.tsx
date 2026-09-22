@@ -94,11 +94,11 @@ const TECH_STACK: { name: string; role: string; logo?: string }[] = [
   { name: "Next.js 16", role: "App shell, UI, and API routes", logo: "/logos/nextjs.png" },
   { name: "Orbis · Reactor", role: "Live, steerable video world over WebRTC", logo: "/logos/reactor.png" },
   {
-    name: "Claude Sonnet 5",
-    role: "Comprehension-based grading via OpenRouter, with an offline fallback",
-    logo: "/logos/openrouter.png",
+    name: "GPT-OSS 120B",
+    role: "Grades answers and narrates the scene on Groq, ~500 tok/s, offline fallback",
+    logo: "/logos/groq.png",
   },
-  { name: "Fish Audio", role: "Speaks each corrected sentence aloud", logo: "/logos/fish-audio.png" },
+  { name: "Fish Audio", role: "Narrates the world and speaks each correction aloud", logo: "/logos/fish-audio.png" },
   { name: "fal.ai", role: "Generated every background, favicon, and mascot on this page", logo: "/logos/fal.png" },
 ];
 
@@ -163,6 +163,7 @@ function Credits() {
 
       <div className="credits-logos">
         <CreditChip href="https://www.reactor.inc" src="/logos/reactor.png" name="Reactor" />
+        <CreditChip href="https://groq.com" src="/logos/groq.png" name="Groq" />
         <CreditChip href="https://fish.audio" src="/logos/fish-audio.png" name="Fish Audio" />
         <CreditChip href="https://fal.ai" src="/logos/fal.png" name="fal" />
       </div>
