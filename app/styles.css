@@ -1421,6 +1421,29 @@ aside code {
   color: var(--k-danger);
 }
 
+.connect-error {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 620px;
+  margin: 0 auto 18px;
+  padding: 13px 18px;
+  color: var(--k-danger);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: left;
+  background: rgba(255, 134, 134, 0.08);
+  border: 1px solid rgba(255, 134, 134, 0.3);
+  border-radius: var(--k-radius-md);
+}
+
+.connect-error span {
+  color: var(--k-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
 /* Live session meter — Orbis bills per wall-clock second and the token caps
    the session at 300s, so this doubles as a spend readout and a "your world
    is about to expire" warning. */

@@ -284,6 +284,15 @@ function IsekaiSession({
     <div className="isekai">
       {phase === "pick" && (
         <>
+          {/* A failed connect drops straight back here, and the HUD that
+              normally shows session.error has just unmounted — so without
+              this the world silently bounces you home with no reason given. */}
+          {session.error && (
+            <div className="connect-error">
+              <strong>Could not open that world.</strong>
+              <span>{session.error}</span>
+            </div>
+          )}
           <ScenarioPicker onPick={enterScenario} />
           {children}
         </>
