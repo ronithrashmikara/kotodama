@@ -11,6 +11,7 @@ import { useOrbisSession, type OrbisSession } from "@/hooks/use-orbis-session";
 import { DEFAULT_LEVEL_ID, getLevel, LEVELS } from "@/lib/levels";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
 import { buildFreeformScenario, localCheck, SCENARIOS, type Scenario } from "@/lib/scenarios";
+import { addEvent, composeScene, type SceneEvent } from "@/lib/scene";
 import { loadVocab, removeWord, saveWord, type VocabEntry } from "@/lib/vocab";
 
 type CheckResponse = {
@@ -72,7 +73,12 @@ function IsekaiSession({
   const [phase, setPhase] = useState<Phase>("pick");
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
-  const [runningScene, setRunningScene] = useState("");
+  // Everything that has happened, in order. composeScene() turns it into the
+  // Orbis prompt; the completion screen replays it as the story you told.
+  const [sceneEvents, setSceneEvents] = useState<SceneEvent[]>([]);
+  const [worldAlive, setWorldAlive] = useState(true);
+  const [worldEvent, setWorldEvent] = useState<{ text: string; urgent: boolean } | null>(null);
+  const runningScene = scenario ? composeScene(scenario.basePrompt, sceneEvents) : "";
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [checking, setChecking] = useState(false);
@@ -133,6 +139,60 @@ function IsekaiSession({
     [levelId, speak],
   );
 
+  // The world keeps moving whether or not you act. This is what makes a live
+  // model load-bearing rather than decorative — and it's effectively free,
+  // since Orbis bills for the seconds you're already holding regardless of
+  // whether the scene changes.
+  const driftBusy = useRef(false);
+  const driftCount = useRef(0);
+  // The interval closes over state once, so read events through a ref.
+  const sceneEventsRef = useRef<SceneEvent[]>([]);
+  sceneEventsRef.current = sceneEvents;
+
+  useEffect(() => {
+    if (phase !== "playing" || !worldAlive || !scenario) return;
+
+    const id = setInterval(async () => {
+      // Never talk over the player's turn or a steer already in flight.
+      if (driftBusy.current || checking || pendingSteer.current !== null) return;
+      driftBusy.current = true;
+      try {
+        driftCount.current += 1;
+        // Every third beat asks something of the player instead of just drifting.
+        const stakes = driftCount.current % 3 === 0;
+        const res = await fetch("/api/drift", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene: composeScene(scenario.basePrompt, sceneEventsRef.current),
+            recent: sceneEventsRef.current
+              .filter((e) => e.source === "world")
+              .slice(-3)
+              .map((e) => e.text),
+            stakes,
+          }),
+        });
+        if (!res.ok) return;
+        const drift: { sceneAddEn: string; event: string; urgent?: boolean } = await res.json();
+        if (!drift.sceneAddEn) return;
+
+        const next = addEvent(sceneEventsRef.current, { text: drift.sceneAddEn, source: "world" });
+        setSceneEvents(next);
+        setWorldEvent({ text: drift.event, urgent: Boolean(drift.urgent) });
+        const nextScene = composeScene(scenario.basePrompt, next);
+        pendingSteer.current = nextScene;
+        session.setPrompt(nextScene);
+        void narrateScene(nextScene);
+      } catch {
+        // A missed beat is harmless; the next tick tries again.
+      } finally {
+        driftBusy.current = false;
+      }
+    }, 22_000);
+
+    return () => clearInterval(id);
+  }, [phase, worldAlive, scenario, checking, session, narrateScene]);
+
   const handleSaveWord = (token: NarrationToken) => {
     setVocab(saveWord({ surface: token.surface, reading: token.reading, meaning: token.meaning }));
   };
@@ -172,7 +232,8 @@ function IsekaiSession({
   const enterScenario = async (chosen: Scenario) => {
     setScenario(chosen);
     setStepIndex(0);
-    setRunningScene(chosen.basePrompt);
+    setSceneEvents([]);
+    setWorldEvent(null);
     setFeedback(null);
     setStreak(0);
     setTurns(0);
@@ -237,8 +298,12 @@ function IsekaiSession({
         setCorrectTurns((c) => c + 1);
         setStreak((s) => s + 1);
         const addition = isFreeform ? data.sceneAddEn : step!.sceneAdd;
-        const nextScene = addition ? `${runningScene} ${addition}.` : runningScene;
-        setRunningScene(nextScene);
+        const nextEvents = addition
+          ? addEvent(sceneEvents, { text: addition, source: "you", said: answer.trim() })
+          : sceneEvents;
+        const nextScene = scenario ? composeScene(scenario.basePrompt, nextEvents) : runningScene;
+        setSceneEvents(nextEvents);
+        setWorldEvent(null);
         pendingSteer.current = nextScene;
         session.setPrompt(nextScene);
         setAnswer("");
@@ -387,6 +452,23 @@ function IsekaiSession({
             )}
 
             {phase === "playing" && (
+              <button
+                type="button"
+                className={`world-toggle ${worldAlive ? "alive" : ""}`}
+                onClick={() => setWorldAlive((v) => !v)}
+                aria-pressed={worldAlive}
+                title={
+                  worldAlive
+                    ? "The world is moving on its own — click to hold it still"
+                    : "The world is paused — click to bring it back to life"
+                }
+              >
+                <span className="world-toggle-dot" />
+                {worldAlive ? "Living world" : "World paused"}
+              </button>
+            )}
+
+            {phase === "playing" && (
               <div className="level-picker" role="group" aria-label="Difficulty level">
                 {LEVELS.map((l) => (
                   <button
@@ -407,6 +489,15 @@ function IsekaiSession({
               <div className="narration narration-loading">
                 <span className="isekai-spinner small" aria-hidden="true" />
                 The world is finding its words…
+              </div>
+            )}
+
+            {phase === "playing" && worldEvent && (
+              <div className={`world-event ${worldEvent.urgent ? "urgent" : ""}`}>
+                <span className="world-event-tag">
+                  {worldEvent.urgent ? "The world needs you" : "Meanwhile"}
+                </span>
+                {worldEvent.text}
               </div>
             )}
 
@@ -509,6 +600,26 @@ function IsekaiSession({
                     <span className="stat-label">Accuracy</span>
                   </div>
                 </div>
+
+                {sceneEvents.length > 0 && (
+                  <div className="story-log">
+                    <span className="story-log-title">The story you told</span>
+                    <ol>
+                      {sceneEvents.map((e, i) => (
+                        <li key={`${e.at}-${i}`} className={`story-beat ${e.source}`}>
+                          <span className="story-beat-who">
+                            {e.source === "you" ? "You" : e.source === "companion" ? "Companion" : "World"}
+                          </span>
+                          <span className="story-beat-text">
+                            {e.said && <em>&ldquo;{e.said}&rdquo; — </em>}
+                            {e.text}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
                 <button className="isekai-submit isekai-submit-wide" onClick={() => void leaveWorld()}>
                   Choose another world
                 </button>

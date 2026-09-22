@@ -1421,6 +1421,141 @@ aside code {
   color: var(--k-danger);
 }
 
+.world-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 6px 13px;
+  color: var(--k-text-faint);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--k-border);
+  border-radius: 999px;
+}
+
+.world-toggle-dot {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.world-toggle.alive {
+  color: var(--k-success);
+  border-color: rgba(111, 220, 154, 0.32);
+}
+
+.world-toggle.alive .world-toggle-dot {
+  box-shadow: 0 0 0 3px rgba(111, 220, 154, 0.2);
+  animation: pulse 2.4s infinite;
+}
+
+.world-event {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 15px;
+  color: var(--k-text);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  background: rgba(201, 179, 255, 0.07);
+  border: 1px solid rgba(201, 179, 255, 0.22);
+  border-left-width: 3px;
+  border-radius: var(--k-radius-sm);
+}
+
+.world-event-tag {
+  color: #c9b3ff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.world-event.urgent {
+  background: rgba(255, 177, 92, 0.09);
+  border-color: rgba(255, 177, 92, 0.4);
+}
+
+.world-event.urgent .world-event-tag {
+  color: var(--k-warn);
+}
+
+.story-log {
+  width: 100%;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.story-log-title {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--k-text-faint);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.story-log ol {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 230px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.story-beat {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 10px;
+  padding-left: 9px;
+  border-left: 2px solid var(--k-border);
+}
+
+.story-beat.you {
+  border-left-color: var(--k-sakura);
+}
+
+.story-beat.companion {
+  border-left-color: #c9b3ff;
+}
+
+.story-beat-who {
+  color: var(--k-text-faint);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.story-beat.you .story-beat-who {
+  color: var(--k-sakura-soft);
+}
+
+.story-beat.companion .story-beat-who {
+  color: #c9b3ff;
+}
+
+.story-beat-text {
+  color: var(--k-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.story-beat-text em {
+  color: var(--k-text);
+  font-family: "Noto Sans JP", sans-serif;
+  font-style: normal;
+}
+
 .subtitle {
   position: absolute;
   right: 0;
@@ -2009,28 +2144,52 @@ aside code {
   z-index: 40;
 }
 
+/* Collapsed it's a circular bird; on hover it expands into a name pill. */
 .builder-fab {
-  display: grid;
-  place-items: center;
-  width: 52px;
+  display: flex;
+  align-items: center;
   height: 52px;
   padding: 0;
   overflow: hidden;
   background: linear-gradient(155deg, #221a15, #100c0a);
   border: 1px solid var(--k-border-strong);
-  border-radius: 50%;
+  border-radius: 999px;
   box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.6);
   transition: transform 150ms ease;
 }
 
 .builder-fab:hover {
-  transform: translateY(-2px) scale(1.04);
+  transform: translateY(-2px);
+}
+
+.builder-fab-name {
+  max-width: 0;
+  padding-right: 0;
+  color: var(--k-gold);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-width 280ms cubic-bezier(0.2, 0.8, 0.3, 1),
+    padding-right 280ms cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 200ms ease;
+}
+
+.builder-fab:hover .builder-fab-name,
+.builder-fab:focus-visible .builder-fab-name {
+  max-width: 220px;
+  padding-right: 18px;
+  opacity: 1;
 }
 
 .builder-fab img {
-  width: 100%;
-  height: 100%;
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
   object-fit: cover;
+  border-radius: 50%;
 }
 
 .builder-popover-avatar {

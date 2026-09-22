@@ -42,11 +42,12 @@ export function BuilderBadge() {
         className="builder-fab"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label="Who made this"
-        title="Who made this?"
+        aria-label="Who made this — Ronith Rashmikara"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/art/honeybird.png" alt="" />
+        {/* Expands on hover into the maker's name. */}
+        <span className="builder-fab-name">Ronith Rashmikara</span>
       </button>
     </div>
   );
