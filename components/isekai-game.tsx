@@ -313,6 +313,19 @@ function IsekaiSession({
                 {phase === "connecting" ? "Opening a portal to the world…" : "The world is waking up…"}
               </div>
             )}
+
+            {/* Subtitle track. The narration lives here too so your eyes stay
+                on the world instead of darting to the side panel. */}
+            {phase === "playing" && narration && (
+              <div className={`subtitle ${speaking ? "speaking" : ""}`}>
+                <p className="subtitle-jp">{narration.japanese}</p>
+                {feedback && (
+                  <p className={`subtitle-feedback ${feedback.ok ? "ok" : "no"}`}>
+                    {feedback.text}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="isekai-hud">
@@ -445,7 +458,11 @@ function IsekaiSession({
                     onChange={(e) => setAnswer(e.target.value)}
                     disabled={checking}
                   />
-                  <MicButton onResult={(text) => setAnswer(text)} />
+                  <MicButton
+                    onResult={(text) => setAnswer(text)}
+                    onSpeechEnd={() => void submitAnswer()}
+                    disabled={checking}
+                  />
                   <button
                     type="submit"
                     className="isekai-submit"
@@ -758,6 +775,7 @@ function StopIcon() {
 // does not (yet) declare. Only the handful of members this component uses.
 type MinimalSpeechRecognition = {
   lang: string;
+  continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   start: () => void;
@@ -770,9 +788,29 @@ type SpeechRecognitionCtor = new () => MinimalSpeechRecognition;
 
 // Minimal optional voice input using the browser's built-in speech
 // recognition — no server key required, silently hidden if unsupported.
-function MicButton({ onResult }: { onResult: (text: string) => void }) {
-  const [listening, setListening] = useState(false);
+// Hands-free mode: once armed, it keeps listening so you can just talk to the
+// world instead of clicking before every sentence. Browsers cut recognition
+// off every ~60s on their own, so it self-restarts until you disarm it.
+function MicButton({
+  onResult,
+  onSpeechEnd,
+  disabled,
+}: {
+  onResult: (text: string) => void;
+  onSpeechEnd: () => void;
+  disabled: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  const [hearing, setHearing] = useState(false);
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
+  const armedRef = useRef(false);
+  const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The recognition handlers are installed once but fire much later, so they
+  // must not close over a stale submitAnswer — that would submit an empty
+  // answer. Keep the callbacks in a ref that always holds the latest render's.
+  const handlers = useRef({ onResult, onSpeechEnd });
+  handlers.current = { onResult, onSpeechEnd };
 
   const getCtor = (): SpeechRecognitionCtor | null => {
     if (typeof window === "undefined") return null;
@@ -784,38 +822,91 @@ function MicButton({ onResult }: { onResult: (text: string) => void }) {
   };
 
   const Ctor = getCtor();
+
+  useEffect(
+    () => () => {
+      armedRef.current = false;
+      if (submitTimer.current) clearTimeout(submitTimer.current);
+      recognitionRef.current?.stop();
+    },
+    [],
+  );
+
   if (!Ctor) return null;
 
-  const toggleListening = () => {
-    if (listening) {
+  const start = () => {
+    const recognition = new Ctor();
+    recognition.lang = "ja-JP";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      // In continuous mode results accumulate, so read the newest one.
+      const results = event.results as unknown as {
+        length: number;
+        [i: number]: { [j: number]: { transcript: string } };
+      };
+      const latest = results[results.length - 1]?.[0]?.transcript?.trim() ?? "";
+      if (!latest) return;
+      setHearing(true);
+      handlers.current.onResult(latest);
+      // Submit once they've stopped talking, so the whole turn is hands-free.
+      if (submitTimer.current) clearTimeout(submitTimer.current);
+      submitTimer.current = setTimeout(() => {
+        setHearing(false);
+        handlers.current.onSpeechEnd();
+      }, 1200);
+    };
+
+    recognition.onerror = () => setHearing(false);
+    recognition.onend = () => {
+      setHearing(false);
+      // Browsers end the stream periodically; re-arm unless the user stopped.
+      if (armedRef.current) {
+        try {
+          recognition.start();
+        } catch {
+          armedRef.current = false;
+          setArmed(false);
+        }
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const toggle = () => {
+    if (armed) {
+      armedRef.current = false;
+      setArmed(false);
+      setHearing(false);
+      if (submitTimer.current) clearTimeout(submitTimer.current);
       recognitionRef.current?.stop();
       return;
     }
-
-    const recognition = new Ctor();
-    recognition.lang = "ja-JP";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onresult = (event) => {
-      const text = event.results[0]?.[0]?.transcript ?? "";
-      if (text) onResult(text);
-    };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
+    armedRef.current = true;
+    setArmed(true);
+    try {
+      start();
+    } catch {
+      armedRef.current = false;
+      setArmed(false);
+    }
   };
 
   return (
     <button
       type="button"
-      className={`isekai-mic ${listening ? "listening" : ""}`}
-      onClick={toggleListening}
-      title="Speak in Japanese"
-      aria-label={listening ? "Stop listening" : "Speak in Japanese"}
+      className={`isekai-mic ${armed ? "armed" : ""} ${hearing ? "listening" : ""}`}
+      onClick={toggle}
+      disabled={disabled}
+      title={armed ? "Hands-free on — click to stop listening" : "Hands-free — just talk"}
+      aria-pressed={armed}
+      aria-label={armed ? "Stop listening" : "Listen hands-free"}
     >
-      {listening ? <StopIcon /> : <MicIcon />}
+      {armed ? <StopIcon /> : <MicIcon />}
     </button>
   );
 }
