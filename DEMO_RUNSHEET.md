@@ -79,6 +79,20 @@ npm run dev
 **Browser setup:** Chrome, clean profile, no extensions, bookmarks bar hidden,
 notifications off, other tabs closed. Sound on. **Zoom at 100%.**
 
+**To record** (screen + mic, verified working on this machine):
+
+```bash
+node scripts/record-demo.mjs        # press Q in that terminal to stop
+node scripts/record-demo.mjs --no-audio
+```
+
+Takes land in `recordings/` timestamped, so nothing overwrites anything.
+Output is 1080p30 H.264 + AAC, `yuv420p` and `+faststart`, so it uploads to
+YouTube without re-encoding surprises.
+
+> **This captures your entire desktop.** Close any terminal or editor showing
+> `.env.local` before you start — those keys are live.
+
 ---
 
 ## 3. The take (2:00)
