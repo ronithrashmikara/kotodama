@@ -9,7 +9,14 @@ import { OrbisPlayer } from "@/components/orbis-player";
 import { VocabPanel } from "@/components/vocab-panel";
 import { VocabReview } from "@/components/vocab-review";
 import { useOrbisSession, type OrbisSession } from "@/hooks/use-orbis-session";
-import { DEFAULT_LEVEL_ID, getLevel, LEVELS } from "@/lib/levels";
+import {
+  FIRST_FREE_LEVEL_ID,
+  getLevel,
+  LEVELS,
+  loadRung,
+  nextRung,
+  saveRung,
+} from "@/lib/levels";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
 import {
   buildChoiceScenario,
@@ -19,7 +26,12 @@ import {
   type Scenario,
 } from "@/lib/scenarios";
 import { ChoiceCards } from "@/components/choice-cards";
+import { EchoCard } from "@/components/echo-card";
+import { FillCard } from "@/components/fill-card";
 import type { Choice } from "@/app/api/choices/route";
+import type { EchoWord } from "@/app/api/word/route";
+import type { FillFrame, FillOption } from "@/app/api/fill/route";
+import { matchesEcho } from "@/lib/romaji";
 import { addEvent, composeScene, type SceneEvent } from "@/lib/scene";
 import {
   buildCompanionScenario,
@@ -106,7 +118,14 @@ function IsekaiSession({
   const [turns, setTurns] = useState(0);
   const [correctTurns, setCorrectTurns] = useState(0);
 
-  const [levelId, setLevelId] = useState(DEFAULT_LEVEL_ID);
+  const [levelId, setLevelId] = useState(FIRST_FREE_LEVEL_ID);
+  // Beginner rungs: one word to echo, or a sentence frame to complete.
+  const [echoWord, setEchoWord] = useState<EchoWord | null>(null);
+  const [echoState, setEchoState] = useState<"waiting" | "ok" | "retry">("waiting");
+  const [taught, setTaught] = useState<string[]>([]);
+  const [fillFrame, setFillFrame] = useState<FillFrame | null>(null);
+  // Outcomes of recent turns, most recent last. Drives silent auto-levelling.
+  const [rungHistory, setRungHistory] = useState<boolean[]>([]);
   const [narration, setNarration] = useState<NarrationData | null>(null);
   const [narrating, setNarrating] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -117,6 +136,9 @@ function IsekaiSession({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => setVocab(loadVocab()), []);
+  // Where they got to last time. Read after mount so the server render and the
+  // first client render agree.
+  useEffect(() => setLevelId(loadRung()), []);
 
   // One narrator at a time — a new line cuts off whatever is still playing.
   // Plays lines back to back, so Hina can say something in Japanese and then
@@ -176,6 +198,54 @@ function IsekaiSession({
     [levelId, speak],
   );
 
+  // Rung 0: fetch one visible thing from the scene and teach its word.
+  const offerEcho = useCallback(async (scene: string) => {
+    if (!scene.trim()) return;
+    setChoosing(true);
+    setEchoState("waiting");
+    try {
+      const res = await fetch("/api/word", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scene, taught: taughtRef.current }),
+      });
+      if (!res.ok) {
+        setEchoWord(null);
+        return;
+      }
+      const word: EchoWord = await res.json();
+      setEchoWord(word);
+      setTaught((t) => [...t, word.kana]);
+      // Hear it before being asked to say it.
+      speak(word.kana);
+    } catch {
+      setEchoWord(null);
+    } finally {
+      setChoosing(false);
+    }
+  }, [speak]);
+
+  // Rung 2: a sentence frame with one gap and three ways to fill it.
+  const offerFill = useCallback(async (scene: string) => {
+    if (!scene.trim()) return;
+    setChoosing(true);
+    try {
+      const res = await fetch("/api/fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene,
+          recent: sceneEventsRef.current.filter((e) => e.source === "you").slice(-3).map((e) => e.text),
+        }),
+      });
+      setFillFrame(res.ok ? await res.json() : null);
+    } catch {
+      setFillFrame(null);
+    } finally {
+      setChoosing(false);
+    }
+  }, []);
+
   // Choice mode: fetch two kana-only options for whatever the scene is now.
   const offerChoices = useCallback(
     async (scene: string) => {
@@ -215,6 +285,9 @@ function IsekaiSession({
   // The interval closes over state once, so read events through a ref.
   const sceneEventsRef = useRef<SceneEvent[]>([]);
   sceneEventsRef.current = sceneEvents;
+  // Read inside callbacks that must not be rebuilt every time a word is taught.
+  const taughtRef = useRef<string[]>([]);
+  taughtRef.current = taught;
 
   useEffect(() => {
     if (phase !== "playing" || !worldAlive || !scenario) return;
@@ -289,13 +362,60 @@ function IsekaiSession({
     }
   }, [session.prompt, session]);
 
+  // What this rung asks for this turn. Below "free" the world is open-ended
+  // even in a scripted world: a beginner cannot hit a scripted objective, and
+  // gating the world behind competence is exactly what this ladder exists to
+  // avoid.
+  const modeRef = useRef(level.mode);
+  modeRef.current = level.mode;
+
+  const nextTurn = useCallback(
+    (scene: string) => {
+      switch (modeRef.current) {
+        case "echo":
+          return void offerEcho(scene);
+        case "choose":
+          return void offerChoices(scene);
+        case "fill":
+          return void offerFill(scene);
+        default:
+          return;
+      }
+    },
+    [offerEcho, offerChoices, offerFill],
+  );
+
   useEffect(() => {
     if (phase === "starting" && session.runStarted) {
       setPhase("playing");
       void narrateScene(runningScene);
-      if (scenario?.id === "choices") void offerChoices(runningScene);
+      nextTurn(runningScene);
     }
-  }, [phase, session.runStarted, narrateScene, runningScene, scenario, offerChoices]);
+  }, [phase, session.runStarted, narrateScene, runningScene, nextTurn]);
+
+  /**
+   * Record how a turn went and move the rung if the pattern is clear.
+   * Deliberately silent: the player should notice Hina speaking more Japanese,
+   * not a number going up.
+   */
+  const recordTurn = useCallback(
+    (ok: boolean) => {
+      setRungHistory((history) => {
+        const next = [...history, ok].slice(-6);
+        setLevelId((current) => {
+          const moved = nextRung(current, next);
+          if (moved !== current) {
+            saveRung(moved);
+            // Fresh slate after a move, or the same four turns would move it again.
+            queueMicrotask(() => setRungHistory([]));
+          }
+          return moved;
+        });
+        return next;
+      });
+    },
+    [],
+  );
 
   const enterScenario = async (chosen: Scenario) => {
     setScenario(chosen);
@@ -309,6 +429,13 @@ function IsekaiSession({
     setConversation([]);
     setCompanionLine(null);
     setChoices(null);
+    setEchoWord(null);
+    setFillFrame(null);
+    setTaught([]);
+    setRungHistory([]);
+    // The かな card is the choose rung by name, so picking it means that rung
+    // however far up the ladder you had climbed.
+    if (chosen.id === "choices") setLevelId(1);
     setPhase("connecting");
 
     // Condition Orbis on Hina's reference frame so she starts as the same
@@ -345,31 +472,74 @@ function IsekaiSession({
 
   const isFreeform = scenario?.id === "freeform";
   const isCompanion = scenario?.id === "companion";
-  const isChoices = scenario?.id === "choices";
   const step = scenario ? scenario.steps[stepIndex] : null;
+
+  /** Steer the world and queue the next turn. Shared by every beginner rung. */
+  const applyTurn = (sceneAddEn: string, said: string) => {
+    if (!scenario) return;
+    const next = addEvent(sceneEvents, { text: sceneAddEn, source: "you", said });
+    setSceneEvents(next);
+    setWorldEvent(null);
+    setTurns((t) => t + 1);
+    setCorrectTurns((c) => c + 1);
+
+    const nextScene = composeScene(scenario.basePrompt, next);
+    pendingSteer.current = nextScene;
+    session.setPrompt(nextScene);
+    // Let the steer land before asking what could happen after it.
+    setTimeout(() => nextTurn(nextScene), 1200);
+  };
+
+  /**
+   * Rung 0. Graded on the client against the kana and its romanisation, with
+   * no network call: this is the first Japanese a beginner ever speaks, and a
+   * second of latency at that exact moment is the difference between "the
+   * world answered me" and "I submitted a form".
+   */
+  const sayEcho = (said: string) => {
+    if (!echoWord || checking) return;
+    const { ok } = matchesEcho(said, echoWord.kana, echoWord.romaji, echoWord.accept);
+    if (!ok) {
+      setEchoState("retry");
+      recordTurn(false);
+      // Say it again for them — hearing the target right after their own
+      // attempt is the most useful correction there is.
+      speak(echoWord.kana);
+      return;
+    }
+
+    setEchoState("ok");
+    recordTurn(true);
+    setStreak((s) => s + 1);
+    setVocab(saveWord({ surface: echoWord.kana, reading: echoWord.kana, meaning: echoWord.english }));
+    const word = echoWord;
+    setTimeout(() => {
+      setEchoWord(null);
+      applyTurn(word.sceneAddEn, word.kana);
+    }, 700);
+  };
+
+  /** Rung 2. No option is wrong — whichever is picked is what happens. */
+  const pickFill = (option: FillOption) => {
+    if (!fillFrame || checking) return;
+    const sentence = fillFrame.frameKana.replace("___", option.kana);
+    setFillFrame(null);
+    recordTurn(true);
+    setStreak((s) => s + 1);
+    setVocab(saveWord({ surface: option.kana, reading: option.kana, meaning: option.english }));
+    speak(sentence);
+    applyTurn(option.sceneAddEn, sentence);
+  };
 
   const pickChoice = async (choice: Choice) => {
     if (!scenario || checking) return;
     setChecking(true);
     setChoices(null);
     try {
-      const next = addEvent(sceneEvents, {
-        text: choice.sceneAddEn,
-        source: "you",
-        said: choice.kana,
-      });
-      setSceneEvents(next);
-      setWorldEvent(null);
-      setTurns((t) => t + 1);
-      setCorrectTurns((c) => c + 1);
-
-      const nextScene = composeScene(scenario.basePrompt, next);
-      pendingSteer.current = nextScene;
-      session.setPrompt(nextScene);
+      recordTurn(true);
+      setVocab(saveWord({ surface: choice.kana, reading: choice.kana, meaning: choice.english }));
       speak(choice.kana);
-
-      // Let the steer land before asking what could happen after it.
-      setTimeout(() => void offerChoices(nextScene), 1200);
+      applyTurn(choice.sceneAddEn, choice.kana);
     } finally {
       setChecking(false);
     }
@@ -447,6 +617,7 @@ function IsekaiSession({
 
       setTurns((t) => t + 1);
       setFeedback({ ok: data.correct, text: data.feedback });
+      recordTurn(data.correct);
 
       if (data.correct) {
         setCorrectTurns((c) => c + 1);
@@ -622,14 +793,21 @@ function IsekaiSession({
               </button>
             )}
 
+            {/* The ladder moves itself as you play; this is here so a returning
+                player can jump, not so anyone has to self-assess before they
+                start. */}
             {phase === "playing" && (
+              <>
               <div className="level-picker" role="group" aria-label="Difficulty level">
                 {LEVELS.map((l) => (
                   <button
                     key={l.id}
                     type="button"
                     className={`level-chip ${l.id === levelId ? "active" : ""}`}
-                    onClick={() => setLevelId(l.id)}
+                    onClick={() => {
+                      setLevelId(l.id);
+                      saveRung(l.id);
+                    }}
                     title={l.blurb}
                   >
                     <span className="level-chip-jp">{l.nameJp}</span>
@@ -637,6 +815,26 @@ function IsekaiSession({
                   </button>
                 ))}
               </div>
+              <p className="level-note">
+                {levelId < FIRST_FREE_LEVEL_ID ? (
+                  <>
+                    No Japanese needed — you&rsquo;ll be saying words out loud within a minute.{" "}
+                    <button
+                      type="button"
+                      className="level-jump"
+                      onClick={() => {
+                        setLevelId(FIRST_FREE_LEVEL_ID);
+                        saveRung(FIRST_FREE_LEVEL_ID);
+                      }}
+                    >
+                      I already know some Japanese →
+                    </button>
+                  </>
+                ) : (
+                  <>It adjusts itself as you play — this is just where you start.</>
+                )}
+              </p>
+              </>
             )}
 
             {phase === "playing" && narrating && !narration && (
@@ -691,19 +889,51 @@ function IsekaiSession({
               </div>
             )}
 
-            {phase === "playing" && isChoices && (
+            {/* Beginner rungs. The world is open-ended here even in a scripted
+                world — a beginner cannot hit a scripted objective, and the
+                reward must never be gated behind competence. */}
+            {phase === "playing" && !isCompanion && level.mode !== "free" && (
               <>
-                {choices ? (
+                {level.mode === "echo" && echoWord ? (
+                  <>
+                    <EchoCard
+                      word={echoWord}
+                      romaji={level.romaji}
+                      onReplay={() => speak(echoWord.kana)}
+                      speaking={speaking}
+                      heard={answer}
+                      state={echoState}
+                    />
+                    <MicButton
+                      onResult={(text) => setAnswer(text)}
+                      onSpeechEnd={() => {
+                        sayEcho(answer);
+                        setAnswer("");
+                      }}
+                      disabled={checking}
+                      autoStart={phase === "playing"}
+                      holdWhileSpeaking={speaking}
+                    />
+                  </>
+                ) : level.mode === "choose" && choices ? (
                   <ChoiceCards
                     choices={choices}
                     onPick={(c) => void pickChoice(c)}
                     disabled={checking}
                     onSpeak={speak}
                   />
+                ) : level.mode === "fill" && fillFrame ? (
+                  <FillCard
+                    frame={fillFrame}
+                    onPick={pickFill}
+                    disabled={checking}
+                    onSpeak={speak}
+                    showEnglish={level.support === "all" || level.support === "new"}
+                  />
                 ) : (
                   <div className="narration narration-loading">
                     <span className="isekai-spinner small" aria-hidden="true" />
-                    {choosing ? "Thinking what could happen next…" : "…"}
+                    {choosing ? "Looking at the world…" : "…"}
                   </div>
                 )}
                 <button className="isekai-finish" onClick={() => setPhase("complete")}>
@@ -712,7 +942,7 @@ function IsekaiSession({
               </>
             )}
 
-            {phase === "playing" && !isChoices && (isCompanion || isFreeform || step) && (
+            {phase === "playing" && (isCompanion || (level.mode === "free" && (isFreeform || step))) && (
               <>
                 <div className="isekai-objective">
                   {isCompanion ? (
