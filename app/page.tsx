@@ -36,17 +36,20 @@ function VideoSection() {
       <SectionHeader
         eyebrow="Watch it in action"
         title="See Yume in motion"
-        lede="A short walkthrough of the game, the tech behind it, and why it had to be built on live, steerable video."
+        lede="One minute on what Yume is, how a turn works, and why it had to be built on live, steerable video."
       />
-      <div className="video-placeholder" role="img" aria-label="Demo video coming soon">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="video-placeholder-bg" src="/art/park.webp" alt="" />
-        <div className="video-placeholder-scrim" />
-        <span className="video-placeholder-play">
-          <PlayIcon />
-        </span>
-        <span className="video-placeholder-label">Full walkthrough — coming soon</span>
+      <div className="video-frame">
+        <video
+          className="video-player"
+          src="/video/yume-60.mp4"
+          poster="/video/yume-60-poster.jpg"
+          controls
+          playsInline
+          // No reason to make people fetch 7MB before they ask for it.
+          preload="metadata"
+        />
       </div>
+      <p className="video-note">Music, no voiceover — the on-screen text carries it, muted or not.</p>
     </section>
   );
 }
@@ -178,14 +181,6 @@ function CreditChip({ href, src, name }: { href: string; src: string; name: stri
       <img className="credit-chip-mark" src={src} alt="" />
       {name}
     </a>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M8 5v14l11-7Z" />
-    </svg>
   );
 }
 

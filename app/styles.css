@@ -2144,7 +2144,7 @@ aside code {
 }
 
 /* Sits in a soft sakura glow so the module reads as the page's centrepiece. */
-.video-placeholder {
+.video-frame {
   position: relative;
   aspect-ratio: 16 / 9;
   max-width: 880px;
@@ -2158,72 +2158,22 @@ aside code {
     var(--k-shadow-panel);
 }
 
-.video-placeholder-bg {
-  position: absolute;
-  inset: 0;
+.video-player {
+  display: block;
   width: 100%;
   height: 100%;
+  /* The cut is letterboxed to 16/9 already, so `contain` would only add bars
+     inside bars; `cover` keeps it flush to the frame's rounded corners. */
   object-fit: cover;
-  filter: brightness(0.62) saturate(1.05) blur(1px);
-  transform: scale(1.04);
+  background: #0b0909;
 }
 
-.video-placeholder-scrim {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(55% 65% at 50% 46%, rgba(6, 5, 6, 0.2) 0%, rgba(6, 5, 6, 0.82) 100%),
-    linear-gradient(180deg, rgba(7, 6, 7, 0.4) 0%, rgba(7, 6, 7, 0.1) 40%, rgba(7, 5, 6, 0.88) 100%);
-}
-
-.video-placeholder-play {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: grid;
-  place-items: center;
-  width: 76px;
-  height: 76px;
-  padding-left: 5px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--k-sakura), #f2668f);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 10px rgba(236, 77, 128, 0.12),
-    0 0 0 22px rgba(236, 77, 128, 0.06),
-    0 18px 44px -10px rgba(236, 77, 128, 0.6);
-  transform: translate(-50%, -50%);
-}
-
-.video-placeholder-label {
-  position: absolute;
-  left: 50%;
-  bottom: 24px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 16px;
-  color: #f3efe6;
-  font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  background: rgba(8, 6, 6, 0.6);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  transform: translateX(-50%);
-}
-
-/* Slow "recording pending" pulse on the label dot. */
-.video-placeholder-label::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  background: var(--k-gold);
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(232, 191, 106, 0.22);
-  animation: pulse 1.8s ease-in-out infinite;
+.video-note {
+  max-width: 880px;
+  margin: 14px auto 0;
+  color: var(--k-text-dim);
+  font-size: 0.82rem;
+  text-align: center;
 }
 
 .why-grid {
@@ -2605,14 +2555,8 @@ html {
     margin-top: 44px;
   }
 
-  .video-placeholder-play {
-    width: 52px;
-    height: 52px;
-  }
-
-  .video-placeholder-label {
-    bottom: 14px;
-    font-size: 0.72rem;
+  .video-frame {
+    border-radius: var(--k-radius-md);
   }
 
   .github-card {
@@ -2690,4 +2634,228 @@ html {
   background: var(--k-success);
   border-radius: 50%;
   box-shadow: 0 0 0 3px rgba(111, 220, 154, 0.2);
+}
+
+/* ---- Beginner rungs -------------------------------------------------------
+   Rung 0 (Echo) and rung 2 (Fill). Both are deliberately large and quiet: the
+   player's attention should be on one word or one sentence, not on chrome. */
+
+.echo-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 30px 28px 24px;
+  text-align: center;
+  background: var(--k-panel);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-lg);
+  box-shadow: var(--k-shadow-panel);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.echo-card.echo-ok {
+  border-color: rgba(111, 220, 154, 0.55);
+  box-shadow: 0 0 0 1px rgba(111, 220, 154, 0.2), var(--k-shadow-panel);
+}
+
+.echo-card.echo-retry {
+  border-color: rgba(255, 177, 92, 0.45);
+}
+
+.echo-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--k-gold);
+}
+
+.echo-kana {
+  margin-top: 6px;
+  font-size: clamp(3rem, 9vw, 4.4rem);
+  line-height: 1.1;
+  color: var(--k-text);
+}
+
+/* A scaffold with an expiry date — rungs 0-1 only. See lib/levels.ts. */
+.echo-romaji {
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  color: var(--k-sakura-soft);
+}
+
+.echo-english {
+  font-size: 1rem;
+  color: var(--k-text-muted);
+}
+
+.echo-replay {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 7px 15px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--k-text);
+  background: rgba(255, 246, 235, 0.06);
+  border: 1px solid var(--k-border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.echo-replay:hover:not(:disabled) {
+  background: rgba(255, 246, 235, 0.12);
+}
+
+.echo-replay:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.echo-status {
+  min-height: 26px;
+  margin-top: 14px;
+  font-size: 0.9rem;
+}
+
+.echo-ok {
+  color: var(--k-success);
+  font-weight: 600;
+}
+
+.echo-retry {
+  color: var(--k-warn);
+}
+
+.echo-heard {
+  color: var(--k-text-muted);
+}
+
+.echo-listening {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--k-text-faint);
+}
+
+.echo-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--k-sakura);
+  border-radius: 50%;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.fill-card {
+  padding: 26px 26px 20px;
+  background: var(--k-panel);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-lg);
+  box-shadow: var(--k-shadow-panel);
+}
+
+.fill-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--k-gold);
+  text-align: center;
+}
+
+.fill-frame {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: clamp(1.6rem, 4.4vw, 2.3rem);
+  color: var(--k-text);
+}
+
+.fill-gap {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.4ch;
+  padding: 0 10px;
+  color: var(--k-sakura);
+  background: rgba(236, 77, 128, 0.1);
+  border: 1px dashed rgba(236, 77, 128, 0.5);
+  border-radius: var(--k-radius-sm);
+}
+
+.fill-frame-en {
+  margin-top: 8px;
+  font-size: 0.92rem;
+  color: var(--k-text-muted);
+  text-align: center;
+}
+
+.fill-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.fill-option {
+  display: grid;
+  gap: 3px;
+  padding: 14px 12px;
+  font: inherit;
+  text-align: center;
+  color: var(--k-text);
+  background: rgba(255, 246, 235, 0.05);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-md);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.fill-option:hover:not(:disabled) {
+  background: rgba(236, 77, 128, 0.12);
+  border-color: rgba(236, 77, 128, 0.45);
+  transform: translateY(-2px);
+}
+
+.fill-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fill-option-kana {
+  font-size: 1.4rem;
+}
+
+.fill-option-en {
+  font-size: 0.82rem;
+  color: var(--k-success);
+}
+
+.fill-hint {
+  margin-top: 16px;
+  font-size: 0.82rem;
+  color: var(--k-text-faint);
+  text-align: center;
+}
+
+.level-note {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: var(--k-text-faint);
+  text-align: center;
+}
+
+.level-jump {
+  padding: 0;
+  font: inherit;
+  color: var(--k-sakura-soft);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
