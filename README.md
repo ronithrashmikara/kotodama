@@ -73,27 +73,40 @@ It starts from **zero Japanese**. A first-time player is taught one short senten
 
 ```mermaid
 sequenceDiagram
+    autonumber
     actor You
-    participant App as Yume (Next.js)
-    participant LLM as GPT-OSS 120B<br/>Cerebras → Groq
-    participant Orbis as Orbis<br/>live video over WebRTC
-    participant Voice as Fish Audio
+    participant Yume as Yume<br/>browser + Next.js
+    participant LLM as GPT-OSS 120B<br/>Cerebras, Groq backup
+    participant Orbis as Orbis<br/>live video
+    participant Fish as Fish Audio<br/>voice
 
-    You->>App: speak Japanese (browser speech recognition, always on)
-    alt a beginner repeating what they were taught
-        App->>App: checked on the device, instantly
-    else anything else
-        App->>LLM: were they understood? (meaning, not grammar)
-        LLM-->>App: yes, and the change to make
+    You->>Yume: say it in Japanese
+    alt rung 0: a sentence you were taught
+        Note over Yume: matched on the device, instantly
+        opt no match: did the mic mishear it?
+            Yume->>LLM: same words, spelled differently?
+            LLM-->>Yume: yes or no
+        end
+    else rungs 3–6 and free play
+        Yume->>LLM: was the meaning understood?
+        LLM-->>Yume: yes or no, and the change to make
     end
-    App->>Orbis: set_prompt: one clear change
-    Note over App,Orbis: the spell plays while Orbis redraws the running world
-    Orbis-->>You: the same world, transformed
-    App->>Voice: narrate the new world
-    Voice-->>You: spoken Japanese
+    alt understood
+        Yume->>Orbis: set_prompt: one clear change
+        Note over You,Orbis: mist, stars and music while Orbis redraws (6–9s)
+        Orbis-->>You: the same world, transformed
+        Yume->>LLM: describe the new world at your level
+        LLM-->>Yume: a line of Japanese
+        Yume->>Fish: speak the description
+        Fish-->>You: the world, in Japanese
+    else not understood
+        Note over Orbis: the world does not move
+        Yume->>Fish: speak the right Japanese
+        Fish-->>You: hear it said correctly, try again
+    end
 ```
 
-A wrong answer stops after the second step. The world is never steered, so the video itself is the feedback.
+If you aren't understood, Orbis is never steered: the world simply doesn't move, and you hear how to say it instead. The video itself is the feedback. (On rungs 1 and 2 you tap the thing you want to happen, so that choice goes straight to step 6.)
 
 ## Why it has to be live video
 
