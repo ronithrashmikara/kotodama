@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -33,7 +33,7 @@ falling, a distant sound, someone passing by. It must:
 - differ from the recent changes you are shown
 
 Respond ONLY with compact JSON, no markdown fences:
-{"sceneAddEn": "a short vivid English phrase to append to an image prompt", "event": "a short plain-English sentence telling the player what just happened, max 12 words"}`;
+{"sceneAddEn": "ONE short sentence describing the change as the camera sees it happen, e.g. \"A gentle breeze lifts a few cherry petals across the path.\"", "event": "a short plain-English sentence telling the player what just happened, max 12 words"}`;
 
 const STAKES = `You are the ambient director of a living, dreamlike Japanese world in a
 language-learning game, and it is time for something that needs the player.
@@ -46,7 +46,7 @@ risky, weather about to spoil something, someone who looks lost. It must:
 - fit what is already there and never contradict it
 
 Respond ONLY with compact JSON, no markdown fences:
-{"sceneAddEn": "a short vivid English phrase to append to an image prompt", "event": "a short plain-English sentence telling the player what is happening and implying they should act, max 16 words", "urgent": true}`;
+{"sceneAddEn": "ONE short sentence describing the change as the camera sees it happen", "event": "a short plain-English sentence telling the player what is happening and implying they should act, max 16 words", "urgent": true}`;
 
 export async function POST(request: Request) {
   let body: DriftRequest;
@@ -59,14 +59,12 @@ export async function POST(request: Request) {
   const scene = body.scene?.trim();
   if (!scene) return NextResponse.json({ error: "scene is required" }, { status: 400 });
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GROQ_API_KEY is not configured" }, { status: 503 });
+  if (!hasModel()) {
+    return NextResponse.json({ error: "No model provider is configured" }, { status: 503 });
   }
 
   try {
     const drift = await chatJson<Drift>({
-      apiKey,
       system: body.stakes ? STAKES : AMBIENT,
       user: `The scene right now: ${scene}
 

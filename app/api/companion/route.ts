@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import type { NarrationToken } from "@/app/api/narrate/route";
 import { COMPANION_SYSTEM } from "@/lib/companion";
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 import { getLevel } from "@/lib/levels";
 
 export const runtime = "nodejs";
@@ -39,9 +39,8 @@ export async function POST(request: Request) {
   const said = body.greeting ? GREETING : body.said?.trim();
   if (!said) return NextResponse.json({ error: "said is required" }, { status: 400 });
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GROQ_API_KEY is not configured" }, { status: 503 });
+  if (!hasModel()) {
+    return NextResponse.json({ error: "No model provider is configured" }, { status: 503 });
   }
 
   const level = getLevel(body.level ?? 1);
@@ -54,7 +53,6 @@ export async function POST(request: Request) {
 
   try {
     const result = await chatJson<CompanionReply>({
-      apiKey,
       system: COMPANION_SYSTEM,
       user: `The player's Japanese level: ${level.nameEn}. ${level.narrationBrief}
 
@@ -66,7 +64,7 @@ The player just said: ${said}`,
       // Replies are one or two sentences plus their glosses. A tight cap
       // matters because this call sits between the player speaking and the
       // world reacting.
-      maxTokens: 500,
+      maxTokens: 800,
     });
 
     if (!result.reply) throw new Error("companion response missing reply");

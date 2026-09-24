@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getLevel } from "@/lib/levels";
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -60,19 +60,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "scene is required" }, { status: 400 });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "GROQ_API_KEY is not configured" },
-      { status: 503 },
-    );
+  if (!hasModel()) {
+    return NextResponse.json({ error: "No model provider is configured" }, { status: 503 });
   }
 
   const level = getLevel(body.level ?? 1);
 
   try {
     const narration = await chatJson<Narration>({
-      apiKey,
       system: SYSTEM_INSTRUCTION,
       user: `Narration length and difficulty for this learner's level: ${level.narrationBrief}
 

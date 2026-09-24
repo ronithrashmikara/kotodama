@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -61,15 +61,13 @@ export async function POST(request: Request) {
   const scene = body.scene?.trim();
   if (!scene) return NextResponse.json({ error: "scene is required" }, { status: 400 });
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GROQ_API_KEY is not configured" }, { status: 500 });
+  if (!hasModel()) {
+    return NextResponse.json({ error: "No model provider is configured" }, { status: 503 });
   }
 
   const recent = (body.recent ?? []).filter(Boolean);
   const ask = (extra = "") =>
     chatJson<FillFrame>({
-      apiKey,
       system: SYSTEM,
       user:
         `Scene: ${scene}\n\n` +

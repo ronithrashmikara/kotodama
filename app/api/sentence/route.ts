@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 import { toRomaji } from "@/lib/romaji";
 
 export const runtime = "nodejs";
@@ -51,7 +51,10 @@ const PARTICLES = new Set(["が", "は", "を", "に", "で", "の", "と", "へ
 // re-description of the whole world, which reads to the model as a rebuild.
 const SYSTEM = `You write ONE short Japanese sentence for an absolute beginner inside a living video world. They learn it word by word, then say it whole — and when they do, the WHOLE world transforms.
 
-Given the scene, write a sentence that makes something big and visible happen to the entire scene: the weather, the season, the time of day, the sky, or one large magical event. Not a small detail — once it is said, the world should look entirely different.
+Given the scene, write a sentence that makes the whole world change. The live video model reliably renders only these changes, so the change MUST be one of them, whichever contrasts with the scene as it is now:
+- If it is day or golden hour: night falls (よるが くる), the stars come out (ほしが かがやく / ほしが でる), the moon rises (つきが のぼる / つきが でる), or night falls with fireworks (はなびが あがる).
+- If it is already night: morning comes (あさが くる), or the sun rises (ひが のぼる).
+Snow, rain, autumn leaves, sunsets and lanterns render faintly or not at all — never use them.
 
 Hard rules for the sentence:
 - HIRAGANA and KATAKANA ONLY. Never any kanji. Write 雪 as ゆき, 降る as ふる, 空 as そら.
@@ -60,7 +63,7 @@ Hard rules for the sentence:
 - Split it into "parts", in order. Each content word is {"kind":"word"} with a short "english" gloss and "accept": other spellings of THAT SAME word with the SAME reading, above all its normal kanji spelling (ゆき → ["雪"], ふる → ["降る"], さす → ["差す"]). Never a different word that means something similar. Each particle is {"kind":"particle","kana":"が"}.
 
 Hard rules for the world:
-- "changeEn": ONE sentence, what the camera sees change, starting from the current scene. Physical nouns and verbs, stated positively. e.g. "Heavy snow begins to fall and the whole park turns white, the cherry trees and grass blanketed in snow."
+- "changeEn": ONE sentence, what the camera sees change, starting from the current scene. Physical nouns and verbs, stated positively. e.g. "The golden light fades as night falls, the sky turning deep indigo and full of stars."
 - "sceneEn": the full scene AFTER the change, 1-3 sentences under 80 words: the same place, the same art-style words as the current scene, with the change fully in place.
 - The change must fit the place (no teleporting somewhere else) and must differ from the recent sentences you are shown.
 
@@ -145,15 +148,13 @@ export async function POST(request: Request) {
   const scene = body.scene?.trim();
   if (!scene) return NextResponse.json({ error: "scene is required" }, { status: 400 });
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GROQ_API_KEY is not configured" }, { status: 503 });
+  if (!hasModel()) {
+    return NextResponse.json({ error: "No model provider is configured" }, { status: 503 });
   }
 
   const recent = (body.recent ?? []).filter(Boolean);
   const ask = (extra = "") =>
     chatJson<Draft>({
-      apiKey,
       system: SYSTEM,
       user:
         `Scene: ${scene}\n\n` +

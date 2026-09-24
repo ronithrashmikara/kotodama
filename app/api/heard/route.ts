@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -41,18 +41,16 @@ export async function POST(request: Request) {
   const target = body.target?.trim().slice(0, 100);
   if (!said || !target) return NextResponse.json({ error: "said and target are required" }, { status: 400 });
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return NextResponse.json({ ok: false, method: "unavailable" });
+  if (!hasModel()) return NextResponse.json({ ok: false, method: "unavailable" });
 
   try {
     const result = await chatJson<{ ok?: boolean }>({
-      apiKey,
       system: SYSTEM,
       user: `Target: ${target}${body.english ? ` ("${body.english}")` : ""}\nTranscription: ${said}`,
       temperature: 0,
       maxTokens: 200,
     });
-    return NextResponse.json({ ok: result.ok === true, method: "groq" });
+    return NextResponse.json({ ok: result.ok === true, method: "model" });
   } catch (error) {
     console.error("Heard check failed", error);
     return NextResponse.json({ ok: false, method: "error" });

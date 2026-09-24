@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getLevel } from "@/lib/levels";
-import { chatJson } from "@/lib/groq";
+import { chatJson, hasModel } from "@/lib/llm";
 import { localCheck, type ScenarioStep } from "@/lib/scenarios";
 
 export const runtime = "nodejs";
@@ -64,21 +64,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "learnerText is required" }, { status: 400 });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  const modelReady = hasModel();
 
   if (freeform) {
-    if (!apiKey) {
+    if (!modelReady) {
       return NextResponse.json({
         correct: false,
-        feedback: "Free-form worlds need a Groq API key configured on the server.",
+        feedback: "Free-form worlds need a model provider configured on the server.",
         correctedJapanese: "",
         sceneAddEn: "",
         method: "unavailable",
       });
     }
     try {
-      const result = await checkFreeformAnswer(apiKey, learnerText, sceneContext ?? "", level);
-      return NextResponse.json({ ...result, method: "groq" });
+      const result = await checkFreeformAnswer(learnerText, sceneContext ?? "", level);
+      return NextResponse.json({ ...result, method: "model" });
     } catch (caught) {
       console.error("Freeform grading failed", caught);
       return NextResponse.json({
@@ -98,10 +98,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (apiKey) {
+  if (modelReady) {
     try {
-      const result = await checkFixedAnswer(apiKey, { learnerText, objectiveEn, sampleAnswer, level });
-      return NextResponse.json({ ...result, method: "groq" });
+      const result = await checkFixedAnswer({ learnerText, objectiveEn, sampleAnswer, level });
+      return NextResponse.json({ ...result, method: "model" });
     } catch (caught) {
       console.error("Grading failed, falling back to offline check", caught);
     }
@@ -118,18 +118,14 @@ export async function POST(request: Request) {
   return NextResponse.json({ ...result, method: "offline" });
 }
 
-async function checkFixedAnswer(
-  apiKey: string,
-  {
-    learnerText,
-    objectiveEn,
-    sampleAnswer,
-    level,
-  }: { learnerText: string; objectiveEn: string; sampleAnswer: string; level: number },
-): Promise<CheckResult> {
+async function checkFixedAnswer({
+  learnerText,
+  objectiveEn,
+  sampleAnswer,
+  level,
+}: { learnerText: string; objectiveEn: string; sampleAnswer: string; level: number }): Promise<CheckResult> {
   const { answerBrief } = getLevel(level);
   const parsed = await chatJson<CheckResult>({
-    apiKey,
     system: SYSTEM_INSTRUCTION,
     user: `What counts as a correct answer at this learner's level: ${answerBrief}
 
@@ -150,14 +146,12 @@ Learner's Japanese answer: ${learnerText.trim()}`,
 }
 
 async function checkFreeformAnswer(
-  apiKey: string,
   learnerText: string,
   sceneContext: string,
   level: number,
 ): Promise<CheckResult> {
   const { answerBrief } = getLevel(level);
   const parsed = await chatJson<CheckResult>({
-    apiKey,
     system: FREEFORM_SYSTEM_INSTRUCTION,
     user: `What counts as a correct answer at this learner's level: ${answerBrief}
 

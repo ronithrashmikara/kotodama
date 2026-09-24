@@ -8,6 +8,7 @@ import { Narration } from "@/components/narration";
 import { OrbisPlayer } from "@/components/orbis-player";
 import { VocabPanel } from "@/components/vocab-panel";
 import { VocabReview } from "@/components/vocab-review";
+import { WorldMagic, type Magic } from "@/components/world-magic";
 import { useOrbisSession } from "@/hooks/use-orbis-session";
 import { useRehearsalFlag, useRehearsalSession, type WorldSession } from "@/hooks/use-rehearsal-session";
 import {
@@ -43,6 +44,7 @@ import {
   whileCompanionTalks,
 } from "@/lib/companion";
 import type { CompanionReply } from "@/app/api/companion/route";
+import { playMagic, unlockMagic, type MagicStrength } from "@/lib/magic-sound";
 import { loadVocab, removeWord, saveWord, type VocabEntry } from "@/lib/vocab";
 
 type CheckResponse = {
@@ -90,12 +92,34 @@ export function IsekaiGame({ children }: { children?: ReactNode }) {
 
 type Phase = "pick" | "connecting" | "starting" | "playing" | "complete";
 
-/** Orbis turns a prompt into picture over 2-4s; the ambient world waits that out and more. */
-const DRIFT_QUIET_MS = 8_000;
+/**
+ * A scene fragment as a steer. The Orbis prompt guide: after the opening
+ * prompt, describe only the one visible change — restating the whole world
+ * "signals a scene rebuild", and the picture degrades as prompts pile up.
+ */
+function asChange(fragment: string): string {
+  const text = fragment.trim().replace(/[.。]+$/, "");
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+}
+
+/**
+ * The ambient world waits this long after the last steer or the last thing the
+ * player did. Orbis needs 2-4s to land a change; the rest is so that a wrong
+ * answer is visibly followed by nothing happening, not by a drift.
+ */
+const DRIFT_QUIET_MS = 12_000;
 /** How long a transformed world is left to land, and be looked at, before the next sentence. */
 const AFTER_TRANSFORM_MS = 5_000;
+/**
+ * Orbis's first chunk carries no picture; frames arrive a chunk or two later.
+ * The first voice and the first card wait for them, so Hina's first words (and
+ * her talking face) and a beginner's first word land on a world, not black.
+ */
+const FIRST_PICTURE_MS = 3_000;
 /** Back-off before asking again when a card could not be fetched. */
 const RETRY_MS = 4_000;
+/** The mic stays deaf this long after our own voice stops, for the recogniser's late final result. */
+const AUDIBLE_TAIL_MS = 700;
 /**
  * "Stop talking" is sent this long before her last line ends: a prompt needs a
  * chunk (~1.8s) to reach the picture, so sending it at the end lands it late.
@@ -115,6 +139,12 @@ function IsekaiSession({
   const rehearsal = useRehearsalSession();
   const rehearsing = useRehearsalFlag();
   const session: WorldSession = rehearsing ? rehearsal : live;
+
+  // Orbis generates at 832×480 and upscales. The 2K tier costs bandwidth and
+  // decode time — on a judge's laptop, or a slow connection — for a picture
+  // that is barely sharper, so every world streams at 1080p.
+  const { setResolution } = live;
+  useEffect(() => setResolution("1080p"), [setResolution]);
 
   const [phase, setPhase] = useState<Phase>("pick");
   const [scenario, setScenario] = useState<Scenario | null>(null);
@@ -151,6 +181,9 @@ function IsekaiSession({
   const [narration, setNarration] = useState<NarrationData | null>(null);
   const [narrating, setNarrating] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  // True only while a voice is actually playing (plus a short tail) — the mic
+  // is deaf exactly then, not for the seconds a line spends being generated.
+  const [audible, setAudible] = useState(false);
   const [vocab, setVocab] = useState<VocabEntry[]>([]);
   const [reviewing, setReviewing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -183,6 +216,9 @@ function IsekaiSession({
   const pendingStart = useRef<string | null>(null);
   const pendingSteer = useRef<string | null>(null);
   const lastSteerAt = useRef(0);
+  // The last thing the player did: a word, an answer, a line to Hina.
+  const lastActivityAt = useRef(0);
+  const audibleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdUntil = useRef(0);
   const sequenceEnding = useRef<(() => void) | null>(null);
 
@@ -216,6 +252,13 @@ function IsekaiSession({
     pendingSteer.current = prompt;
     current.setPrompt(prompt);
   }, []);
+
+  // Development only: lets a test script steer the live world directly, to
+  // find out which changes Orbis actually renders, and how fast.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    (window as unknown as { __yumeSteer?: (prompt: string) => void }).__yumeSteer = steerTo;
+  }, [steerTo]);
 
   /** Hold off fetching the next card for a moment, e.g. while a steer lands. */
   const holdTurn = useCallback((ms: number) => {
@@ -263,6 +306,14 @@ function IsekaiSession({
       try {
         const audio = new Audio(`/api/tts?text=${encodeURIComponent(queue[index++])}`);
         audioRef.current = audio;
+        audio.onplaying = () => {
+          if (audibleTimer.current) clearTimeout(audibleTimer.current);
+          setAudible(true);
+        };
+        audio.onpause = () => {
+          if (audibleTimer.current) clearTimeout(audibleTimer.current);
+          audibleTimer.current = setTimeout(() => setAudible(false), AUDIBLE_TAIL_MS);
+        };
         audio.onended = playNext;
         // A failed line shouldn't strand the rest of the queue.
         audio.onerror = playNext;
@@ -280,6 +331,32 @@ function IsekaiSession({
   }, []);
 
   const speak = useCallback((text: string) => speakSequence([text]), [speakSequence]);
+
+  // The spell cast when the player's words change the world (see WorldMagic):
+  // it fills the seconds Orbis needs to morph the picture. Only the player's
+  // words cast it — the world's own drifting is not magic, and a wrong answer
+  // is silence.
+  const [magic, setMagic] = useState<Magic | null>(null);
+  const endMagic = useCallback(() => setMagic(null), []);
+  const magicRef = useRef<Magic | null>(null);
+  magicRef.current = magic;
+  const castMagic = useCallback(
+    (
+      strength: MagicStrength,
+      words?: string,
+      { sound = strength, onReveal }: { sound?: MagicStrength; onReveal?: () => void } = {},
+    ) => {
+      setMagic({ id: Date.now(), strength, words, onReveal });
+      const seconds = playMagic(sound, scenarioRef.current?.id);
+      // Our own music must not reach the recogniser as the player's voice.
+      if (seconds) {
+        if (audibleTimer.current) clearTimeout(audibleTimer.current);
+        setAudible(true);
+        audibleTimer.current = setTimeout(() => setAudible(false), seconds * 1000 + AUDIBLE_TAIL_MS);
+      }
+    },
+    [],
+  );
 
   const narrateScene = useCallback(
     async (scene: string, aloud = true) => {
@@ -458,12 +535,17 @@ function IsekaiSession({
       // Never talk over the player's turn, a steer still in flight, or a
       // voice mid-line — least of all Hina's, whose face is being steered.
       if (driftBusy.current || checkingRef.current || pendingSteer.current !== null) return;
-      if (speakingRef.current || Date.now() - lastSteerAt.current < DRIFT_QUIET_MS) return;
+      if (speakingRef.current) return;
+      if (Date.now() - Math.max(lastSteerAt.current, lastActivityAt.current) < DRIFT_QUIET_MS) return;
       driftBusy.current = true;
       try {
         driftCount.current += 1;
-        // Every third beat asks something of the player instead of just drifting.
-        const stakes = driftCount.current % 3 === 0;
+        // Every third beat asks something of the player instead of just
+        // drifting — but only where they can answer anything. Over a scripted
+        // objective, or a word being taught, "call the rabbit" is a request the
+        // game would then mark wrong.
+        const freeToAnswer = scenario.id === "freeform" || scenario.id === "companion";
+        const stakes = freeToAnswer && driftCount.current % 3 === 0;
         const res = await fetch("/api/drift", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -483,12 +565,11 @@ function IsekaiSession({
         const next = addEvent(sceneEventsRef.current, { text: drift.sceneAddEn, source: "world" });
         setSceneEvents(next);
         setWorldEvent({ text: drift.event, urgent: Boolean(drift.urgent) });
-        const nextScene = composeScene(scenario.basePrompt, next);
-        steerTo(nextScene);
-        // With Hina, the narrator's voice would be mistaken for hers with her
-        // mouth shut; below the free rungs it would talk over the word being
-        // taught. Both still get the line on screen.
-        if (scenario.id !== "companion") void narrateRef.current(nextScene, modeRef.current === "free");
+        steerTo(asChange(drift.sceneAddEn));
+        // On screen only. Spoken, it would hold the mic every twenty seconds
+        // for the length of a line nobody asked for — and with Hina, the
+        // narrator's voice would be mistaken for hers with her mouth shut.
+        if (scenario.id !== "companion") void narrateRef.current(composeScene(scenario.basePrompt, next), false);
       } catch {
         // A missed beat is harmless; the next tick tries again.
       } finally {
@@ -552,6 +633,7 @@ function IsekaiSession({
   // Companion mode is a conversation, not a graded turn: whatever you say goes
   // to Hina, she answers in Japanese, and her answer steers the world.
   const talkToCompanion = async (greeting = false) => {
+    lastActivityAt.current = Date.now();
     const said = answer.trim();
     if ((!greeting && !said) || checking || !scenario) return;
     setChecking(true);
@@ -593,6 +675,7 @@ function IsekaiSession({
         );
         // One clear change on top of the talking she is already doing — the
         // world around her is not restated, per the Orbis prompt guide.
+        if (!greeting) castMagic("medium", said, { sound: "small" });
         steerTo(whileCompanionTalks(data.sceneAddEn));
       }
       hinaSays(data);
@@ -608,13 +691,19 @@ function IsekaiSession({
   useEffect(() => {
     if (phase === "starting" && session.runStarted) {
       setPhase("playing");
+      holdTurn(FIRST_PICTURE_MS);
+      const opening = runningScene;
       // Hina speaks first, so her first words come with her face moving; the
       // narrator opens only where the player answers freely — below that the
       // first thing heard is the word being taught.
-      if (scenarioRef.current?.id === "companion") void greetRef.current(true);
-      else if (modeRef.current === "free") void narrateRef.current(runningScene);
+      setTimeout(() => {
+        const world = scenarioRef.current;
+        if (!world) return;
+        if (world.id === "companion") void greetRef.current(true);
+        else if (modeRef.current === "free") void narrateRef.current(opening);
+      }, FIRST_PICTURE_MS);
     }
-  }, [phase, session.runStarted, runningScene]);
+  }, [phase, session.runStarted, runningScene, holdTurn]);
 
   const enterScenario = async (chosen: Scenario) => {
     setScenario(chosen);
@@ -640,6 +729,7 @@ function IsekaiSession({
     // The かな card is the choose rung by name, so picking it means that rung
     // however far up the ladder you had climbed.
     if (chosen.id === "choices") setLevelId(1);
+    unlockMagic();
     setPhase("connecting");
 
     // Condition Orbis on Hina's reference frame so she starts as the same
@@ -672,6 +762,7 @@ function IsekaiSession({
     sequenceEnding.current = null;
     audioRef.current?.pause();
     setSpeaking(false);
+    setMagic(null);
     // Unmount the world view before its tracks close, and so the "dream has
     // faded" screen does not flash while the session winds down.
     setPhase("pick");
@@ -687,7 +778,8 @@ function IsekaiSession({
     setWorldEvent(null);
     setTurns((t) => t + 1);
     setCorrectTurns((c) => c + 1);
-    steerTo(composeScene(scenario.basePrompt, next));
+    castMagic("medium", said);
+    steerTo(asChange(sceneAddEn));
     holdTurn(1200);
   };
 
@@ -711,11 +803,12 @@ function IsekaiSession({
     setCorrectTurns((c) => c + 1);
     setTransforming(true);
     setTurnHold(true);
+    // The narrator describes the new world once the mist has cleared on it.
+    castMagic("big", challenge.sentenceKana, { onReveal: () => void narrateRef.current(challenge.sceneEn) });
     steerTo(challenge.changeEn);
-    void narrateRef.current(challenge.sceneEn);
 
     const release = () => {
-      if (speakingRef.current || narratingRef.current) {
+      if (speakingRef.current || narratingRef.current || magicRef.current) {
         setTimeout(release, 600);
         return;
       }
@@ -763,6 +856,7 @@ function IsekaiSession({
   };
 
   const saySentence = async (said: string) => {
+    lastActivityAt.current = Date.now();
     if (!sentence || !scenario || transforming || judging.current) return;
     if (sentenceState === "ok" || !said.trim()) return;
     const asked = sentence;
@@ -780,6 +874,7 @@ function IsekaiSession({
         return;
       }
       setSentenceState("ok");
+      castMagic("small");
       setVocab(saveWord({ surface: word.kana, reading: word.kana, meaning: word.english ?? "" }));
       const nextStep = sentenceStep + 1;
       const nextTarget = nextStep < sentenceWords.length ? sentenceWords[nextStep].kana : sentence.sentenceKana;
@@ -829,6 +924,7 @@ function IsekaiSession({
   };
 
   const submitAnswer = async () => {
+    lastActivityAt.current = Date.now();
     if (isCompanion) return talkToCompanion();
     if ((!isFreeform && !step) || !answer.trim() || checking) return;
     setChecking(true);
@@ -873,7 +969,8 @@ function IsekaiSession({
         const nextScene = scenario ? composeScene(scenario.basePrompt, nextEvents) : runningScene;
         setSceneEvents(nextEvents);
         setWorldEvent(null);
-        steerTo(nextScene);
+        castMagic("medium", answer.trim());
+        if (addition) steerTo(asChange(addition));
         setAnswer("");
 
         // On success the narrator describing the changed world is the reward,
@@ -922,6 +1019,39 @@ function IsekaiSession({
   // the 5-minute cap, or the connection dropping. Say so, rather than leaving
   // a frozen frame with nothing to explain it.
   const worldEnded = phase === "playing" && !session.runStarted;
+
+  // A world that never wakes: the session dropped or errored before its first
+  // frame, or Orbis took far longer than its usual ~20s. Say so and offer
+  // another try, rather than a spinner that spins forever.
+  const waking = phase === "connecting" || phase === "starting";
+  const [wakeSlow, setWakeSlow] = useState(false);
+  const [wakeFailed, setWakeFailed] = useState(false);
+  const wasReady = useRef(false);
+  useEffect(() => {
+    if (!waking) {
+      wasReady.current = false;
+      setWakeSlow(false);
+      setWakeFailed(false);
+      return;
+    }
+    const slow = setTimeout(() => setWakeSlow(true), 8_000);
+    const stuck = setTimeout(() => setWakeFailed(true), 75_000);
+    return () => {
+      clearTimeout(slow);
+      clearTimeout(stuck);
+    };
+  }, [waking]);
+  useEffect(() => {
+    if (!waking) return;
+    if (session.status === "ready") wasReady.current = true;
+    if ((wasReady.current && session.status === "disconnected") || (phase === "starting" && session.error)) {
+      setWakeFailed(true);
+    }
+  }, [waking, phase, session.status, session.error]);
+  const tryAgain = () => {
+    const again = scenario;
+    void leaveWorld().then(() => again && void enterScenario(again));
+  };
   const answersFreely = isCompanion || (level.mode === "free" && (isFreeform || Boolean(step)));
 
   const levelPicker = (
@@ -1003,10 +1133,16 @@ function IsekaiSession({
               />
             )}
             <div className="world-scrim" aria-hidden="true" />
-            {(phase === "connecting" || phase === "starting") && (
+            <WorldMagic magic={magic} onDone={endMagic} world={scenario?.id ?? ""} />
+            {waking && !wakeFailed && (
               <div className="isekai-loading">
                 <span className="isekai-spinner" aria-hidden="true" />
                 {phase === "connecting" ? "Opening a portal to the world…" : "The world is waking up…"}
+                {wakeSlow && (
+                  <span className="isekai-loading-note">
+                    A GPU is waking up just for your world. This can take about twenty seconds.
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -1095,7 +1231,26 @@ function IsekaiSession({
             </div>
           )}
 
-          {worldEnded ? (
+          {waking && wakeFailed ? (
+            <div className="world-modal">
+              <div className="world-ended world-wake-failed">
+                <SparkleIcon />
+                <h2>The world didn&rsquo;t wake up</h2>
+                <p>
+                  Orbis couldn&rsquo;t start a world this time. It happens now and then, and trying again
+                  usually works.
+                </p>
+                <div className="world-ended-actions">
+                  <button className="isekai-submit isekai-submit-wide" onClick={tryAgain}>
+                    Try again
+                  </button>
+                  <button className="isekai-leave" onClick={() => void leaveWorld()}>
+                    Back to the worlds
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : worldEnded ? (
             <div className="world-modal">
               <div className="world-ended">
                 <SparkleIcon />
@@ -1107,10 +1262,7 @@ function IsekaiSession({
                 <div className="world-ended-actions">
                   <button
                     className="isekai-submit isekai-submit-wide"
-                    onClick={() => {
-                      const again = scenario;
-                      void leaveWorld().then(() => again && void enterScenario(again));
-                    }}
+                    onClick={tryAgain}
                   >
                     Dream again
                   </button>
@@ -1230,14 +1382,17 @@ function IsekaiSession({
                           onTyped={saySentence}
                           mic={
                             <MicButton
-                              onResult={(text) => setAnswer(text)}
+                              onResult={(text) => {
+                                lastActivityAt.current = Date.now();
+                                setAnswer(text);
+                              }}
                               onSpeechEnd={() => {
                                 void saySentence(answer);
                                 setAnswer("");
                               }}
                               disabled={checking}
                               autoStart={phase === "playing"}
-                              holdWhileSpeaking={speaking}
+                              holdWhileSpeaking={audible}
                             />
                           }
                         />
@@ -1322,11 +1477,14 @@ function IsekaiSession({
                         lang="ja"
                       />
                       <MicButton
-                        onResult={(text) => setAnswer(text)}
+                        onResult={(text) => {
+                          lastActivityAt.current = Date.now();
+                          setAnswer(text);
+                        }}
                         onSpeechEnd={() => void submitAnswer()}
                         disabled={checking}
                         autoStart={phase === "playing"}
-                        holdWhileSpeaking={speaking}
+                        holdWhileSpeaking={audible}
                       />
                       <button
                         type="submit"
