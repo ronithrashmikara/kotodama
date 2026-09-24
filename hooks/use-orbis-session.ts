@@ -37,6 +37,9 @@ export function useOrbisSession(
   const [imageStatus, setImageStatus] = useState("");
   const [error, setError] = useState("");
   const [events, setEvents] = useState<string[]>([]);
+  // True while a restart is under way: the run stops for a moment between the
+  // reset and the new start, and that gap is not the world ending.
+  const [restarting, setRestarting] = useState(false);
 
   const previousStatus = useRef(status);
   const disconnecting = useRef(false);
@@ -48,6 +51,9 @@ export function useOrbisSession(
   const controlsBusy = busy || nanoBusy;
 
   useEffect(() => {
+    if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+      ((window as unknown as { __orbisLog?: unknown[] }).__orbisLog ??= []).push({ t: Date.now(), status });
+    }
     if (
       status === "disconnected" &&
       previousStatus.current !== "disconnected"
@@ -180,6 +186,11 @@ export function useOrbisSession(
 
   useReactorMessage((raw: unknown) => {
     const message = unwrapOrbisMessage(raw);
+    // Development only: every message Orbis sends, for the test harness.
+    if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+      const log = ((window as unknown as { __orbisLog?: unknown[] }).__orbisLog ??= []);
+      if (message.type !== "chunk_complete") log.push({ t: Date.now(), ...message });
+    }
 
     if (message.type === "conditions_ready") {
       conditionsReadyResolver.current?.();
@@ -319,6 +330,24 @@ export function useOrbisSession(
     await runAction(() => startGeneration(editedImage, groundedPrompt));
   };
 
+  /**
+   * A fresh generation in the same session, from a new prompt. After a couple
+   * of minutes Orbis's picture drifts (streaks, warped buildings); a reset
+   * clears it, and a portal uses it to go somewhere new — without a new GPU
+   * or the twenty-second wake-up. The same image, if there was one, anchors it.
+   */
+  const restart = (runPrompt: string) =>
+    runAction(async () => {
+      setRestarting(true);
+      try {
+        setPrompt(runPrompt);
+        await sendCommand("reset", {});
+        await startGeneration(image, runPrompt);
+      } finally {
+        setRestarting(false);
+      }
+    });
+
   const steer = () =>
     runAction(async () => {
       if (!prompt.trim()) throw new Error("Enter a prompt before steering.");
@@ -361,6 +390,7 @@ export function useOrbisSession(
     connected,
     controlsBusy,
     runStarted,
+    restarting,
     paused,
     muted,
     prompt,
@@ -380,6 +410,7 @@ export function useOrbisSession(
     startFromNanoOutput,
     setNanoBusy,
     steer,
+    restart,
     pause: () => runAction(() => sendCommand("pause", {})),
     resume: () => runAction(() => sendCommand("resume", {})),
     reset: () => runAction(() => sendCommand("reset", {})),

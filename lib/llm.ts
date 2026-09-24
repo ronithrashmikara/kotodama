@@ -6,22 +6,32 @@
 // The model is GPT-OSS 120B, served by whichever fast provider is configured:
 //
 //   Cerebras  ~3,000 tokens/s   CEREBRAS_API_KEY   tried first when present
-//   Groq        ~500 tokens/s   GROQ_API_KEY       the fallback, or the only one
+//   Groq        ~500 tokens/s   GROQ_API_KEY       next, then GROQ_API_KEY_2
+//   fal        ~2 s a call      FAL_KEY            the backstop: Gemini 2.5 Flash
+//                                                  via fal's OpenRouter, paid from
+//                                                  fal credits, with no daily cap
 //
-// Both speak the OpenAI chat format, so one request shape serves either. When a
+// Groq's free tier stops at 200,000 tokens a day, which one busy day of play
+// uses up (it did, on 24 Sep); fal keeps the world talking when that happens.
+//
+// All three speak the OpenAI chat format, so one request shape serves each. When a
 // provider rate-limits, errors or hangs, the call moves to the next one at once,
 // and a rate-limited provider is skipped until its limit resets — so the free
 // tiers of the two back each other up mid-session.
 
-type ProviderName = "cerebras" | "groq";
+type ProviderName = "cerebras" | "groq" | "groq-2" | "fal";
 
 type Provider = {
   name: ProviderName;
   url: string;
   key: string;
   model: string;
-  /** Parameters only this provider understands. */
+  /** The Authorization header's value. */
+  auth: string;
+  /** Parameters only this provider understands (undefined removes a default). */
   extra: Record<string, unknown>;
+  /** How long a call may take before failing over. */
+  timeoutMs?: number;
 };
 
 function providers(): Provider[] {
@@ -31,20 +41,41 @@ function providers(): Provider[] {
       name: "cerebras",
       url: "https://api.cerebras.ai/v1/chat/completions",
       key: process.env.CEREBRAS_API_KEY,
+      auth: `Bearer ${process.env.CEREBRAS_API_KEY}`,
       model: "gpt-oss-120b",
       extra: {},
     });
   }
-  if (process.env.GROQ_API_KEY) {
+  // Two Groq keys are two separate allowances (each 200,000 tokens a day on the
+  // free tier): when one is spent, the other takes over.
+  for (const [name, key] of [
+    ["groq", process.env.GROQ_API_KEY],
+    ["groq-2", process.env.GROQ_API_KEY_2],
+  ] as const) {
+    if (!key) continue;
     list.push({
-      name: "groq",
+      name,
       url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
+      key,
+      auth: `Bearer ${key}`,
       model: "openai/gpt-oss-120b",
       // GPT-OSS is a reasoning model — without this Groq leaks its
       // chain-of-thought into `content` and breaks JSON mode (a 400 with an
       // empty failed_generation). Cerebras returns reasoning separately.
       extra: { include_reasoning: false },
+    });
+  }
+  if (process.env.FAL_KEY) {
+    list.push({
+      name: "fal",
+      url: "https://fal.run/openrouter/router/openai/v1/chat/completions",
+      key: process.env.FAL_KEY,
+      auth: `Key ${process.env.FAL_KEY}`,
+      model: process.env.FAL_LLM_MODEL ?? "google/gemini-2.5-flash",
+      // Gemini thinks by default, which doubles the wait; these calls do not need it.
+      extra: { reasoning: { enabled: false }, reasoning_effort: undefined },
+      // A router hop, and now and then a cold start.
+      timeoutMs: 12_000,
     });
   }
   // LLM_PROVIDER=groq keeps Groq first even when a Cerebras key is present.
@@ -88,7 +119,7 @@ async function callProvider<T>(
   const response = await fetch(p.url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${p.key}`,
+      Authorization: p.auth,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -104,14 +135,18 @@ async function callProvider<T>(
         { role: "user", content: user },
       ],
     }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(p.timeoutMs ?? TIMEOUT_MS),
   });
 
   if (response.status === 429) {
     const retryAfter = Number(response.headers.get("retry-after"));
+    const body = await response.text();
+    // A daily allowance spent is not coming back in seconds, whatever
+    // retry-after says; stop asking for a while.
+    const daily = /per day|TPD|RPD/.test(body);
     throw new Unavailable(
-      `${p.name} rate-limited: ${await response.text()}`,
-      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 10_000,
+      `${p.name} rate-limited: ${body}`,
+      daily ? 15 * 60_000 : Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 10_000,
     );
   }
   // A missing or revoked key will not fix itself mid-session; stop paying a
@@ -149,7 +184,7 @@ export async function chatJson<T>({
   maxTokens?: number;
 }): Promise<T> {
   const all = providers();
-  if (!all.length) throw new Error("No model provider is configured (CEREBRAS_API_KEY or GROQ_API_KEY)");
+  if (!all.length) throw new Error("No model provider is configured (CEREBRAS_API_KEY, GROQ_API_KEY or FAL_KEY)");
 
   // Providers still cooling down go last rather than being dropped: if every
   // provider is limited, the one that frees up soonest is still worth a try.

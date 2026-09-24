@@ -18,6 +18,8 @@ type CompanionRequest = {
   /** The player has just arrived and said nothing yet — Hina speaks first. */
   greeting?: boolean;
   learn?: Learn;
+  /** Plain-English lines about this player's earlier dreams (lib/dreams.ts). */
+  memories?: string[];
 };
 
 const GREETING =
@@ -60,6 +62,19 @@ export async function POST(request: Request) {
     .map((t) => `${t.role === "you" ? "Player" : "You"}: ${t.text}`)
     .join("\n");
 
+  // She remembers them: brought up warmly once, in the greeting, or when it
+  // fits — never recited.
+  const memories = body.memories?.length
+    ? `What you remember from earlier dreams with this player:\n${body.memories
+        .slice(0, 3)
+        .map((m) => `- ${m}`)
+        .join("\n")}\n${
+        body.greeting
+          ? 'Your greeting MUST bring up ONE of these memories, simply and happily, like a friend who remembers ("Last time you made a whale jump!"), and then point out one thing you can both see.'
+          : "Bring a memory up only if it fits naturally."
+      }\n\n`
+    : "";
+
   try {
     const result = await chatJson<CompanionReply & { replyMeaning?: string }>({
       system: learn === "en" ? COMPANION_SYSTEM_EN : COMPANION_SYSTEM,
@@ -67,7 +82,7 @@ export async function POST(request: Request) {
 
 What you can both see right now: ${body.scene || "(a quiet, undefined place)"}
 
-${history ? `Recent conversation:\n${history}\n` : ""}
+${history ? `Recent conversation:\n${history}\n` : ""}${memories}
 The player just said: ${said}`,
       temperature: 0.8,
       // Replies are one or two sentences plus their glosses. A tight cap

@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactorProvider } from "@reactor-team/js-sdk";
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import type { Narration as NarrationData, NarrationToken } from "@/app/api/narrate/route";
 import { Narration } from "@/components/narration";
@@ -20,8 +20,15 @@ import {
   rungBrief,
   saveRung,
 } from "@/lib/levels";
+import type { Quest } from "@/app/api/quest/route";
+import type { StickerReply } from "@/app/api/sticker/route";
 import { DreamReel } from "@/components/dream-reel";
+import { StickerAlbum, StickerToast, type ToastSticker } from "@/components/sticker-album";
+import { createAmbience, type Ambience } from "@/lib/ambience";
 import { createMomentRecorder, type DreamMoment, type MomentRecorder } from "@/lib/dream-moments";
+import { describeDreams, recentDreams, rememberDream } from "@/lib/dreams";
+import { DOOR_APPEARS, pickDestination, portalChallenge, type Destination } from "@/lib/portals";
+import { addSticker, albumCount, shrinkImage } from "@/lib/stickers";
 import { matchesSentenceEn, matchesWordEn } from "@/lib/english";
 import { hasLearnChoice, LEARN, loadLearn, saveLearn, type Learn } from "@/lib/learn";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
@@ -146,6 +153,65 @@ const AUDIBLE_TAIL_MS = 700;
  * chunk (~1.8s) to reach the picture, so sending it at the end lands it late.
  */
 const ENDING_LEAD_S = 1.5;
+/**
+ * A door to somewhere new appears after this long in one place, or after this
+ * many changes — before the picture starts to drift (~2 min, measured live).
+ * If nobody opens it, the dream refreshes itself in place at REFRESH_S.
+ */
+const PORTAL_AFTER_S = 95;
+const PORTAL_AFTER_CHANGES = 4;
+const REFRESH_S = 165;
+/** A quest turns up after this many changes, and again after as many more. */
+const QUEST_EVERY_CHANGES = 2;
+/** The five-minute cap: nothing new starts in the last stretch of it. */
+const SESSION_S = 300;
+/** A sticker is handed over once the change it is for has landed. */
+const STICKER_AFTER_MS = 9_000;
+/** How long a big spell's mist takes to cover the picture: a restart hides behind it. */
+const MIST_UP_MS = 1_400;
+
+/** A small picture of the live world, for a sticker's memory. */
+function snapshot(): string | null {
+  const video = document.querySelector<HTMLVideoElement>(".world-stage video");
+  const image = document.querySelector<HTMLImageElement>(".world-stage img");
+  const source = video && video.videoWidth ? video : image && image.naturalWidth ? image : null;
+  if (!source) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 180;
+  try {
+    canvas.getContext("2d")?.drawImage(source, 0, 0, 320, 180);
+    return canvas.toDataURL("image/jpeg", 0.8);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves once the stage's video has shown `count` new frames — after a
+ * restart, Orbis takes a few seconds to paint again, and the mist stays up
+ * until it has. Gives up after `timeoutMs`; with no video (rehearsal) it
+ * resolves almost at once.
+ */
+function freshFrames(count = 6, timeoutMs = 15_000): Promise<void> {
+  return new Promise((resolve) => {
+    // A stalled stream presents nothing at all, so the clock has the last word.
+    const giveUp = setTimeout(resolve, timeoutMs);
+    const done = () => {
+      clearTimeout(giveUp);
+      resolve();
+    };
+    const started = Date.now();
+    let seen = 0;
+    const watch = () => {
+      const video = document.querySelector<HTMLVideoElement>(".world-stage video");
+      if (!video) return Date.now() - started > 1_000 ? done() : void setTimeout(watch, 250);
+      if (!("requestVideoFrameCallback" in video)) return void setTimeout(done, 4_000);
+      video.requestVideoFrameCallback(() => (++seen >= count ? done() : watch()));
+    };
+    watch();
+  });
+}
 
 function IsekaiSession({
   clearJwt,
@@ -232,6 +298,50 @@ function IsekaiSession({
     if (!sessionWords.current.some((w) => w.word === word)) sessionWords.current.push({ word, meaning });
   };
 
+  // Duet: two players, two languages, one dream. Player 1 learns Japanese and
+  // player 2 English; the turn — and with it the language the world listens
+  // for — passes over each time one of them changes the world.
+  const [duet, setDuet] = useState(false);
+  const duetRef = useRef(duet);
+  duetRef.current = duet;
+  const passTurn = () => {
+    if (!duetRef.current) return;
+    const next: Learn = learnRef.current === "ja" ? "en" : "ja";
+    learnRef.current = next;
+    setLearn(next);
+  };
+
+  // Quests: every few changes the world develops a small problem that the
+  // player's words can solve, with the sentence to solve it taught like any
+  // beginner sentence, and a gold sticker for finishing it.
+  const [quest, setQuest] = useState<Quest | null>(null);
+  const questRef = useRef(quest);
+  questRef.current = quest;
+  const questsDone = useRef<string[]>([]);
+  const changesSinceQuest = useRef(0);
+  const fetchingQuest = useRef(false);
+
+  // Portals: after a while in one place a glowing door appears; the magic
+  // words take the dream somewhere new (and start the picture afresh).
+  const [portal, setPortal] = useState<Destination | null>(null);
+  const portalRef = useRef(portal);
+  portalRef.current = portal;
+  const [travelling, setTravelling] = useState(false);
+  const visited = useRef<string[]>([]);
+  const placeStartedAt = useRef(0);
+  const changesHere = useRef(0);
+
+  // Stickers: each change the player's words make can earn one, drawn by fal.
+  const [toast, setToast] = useState<ToastSticker | null>(null);
+  const endToast = useCallback(() => setToast(null), []);
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [stickerCount, setStickerCount] = useState(0);
+  useEffect(() => setStickerCount(albumCount()), [albumOpen]);
+  const sessionStickers = useRef<string[]>([]);
+
+  // The world's own sound, made in the browser: waves, birds, crickets.
+  const ambience = useRef<Ambience | null>(null);
+
   const level = getLevel(levelId);
   const brief = rungBrief(level, learn);
   const isFreeform = scenario?.id === "freeform";
@@ -304,6 +414,18 @@ function IsekaiSession({
     if (process.env.NODE_ENV !== "development") return;
     (window as unknown as { __yumeSteer?: (prompt: string) => void }).__yumeSteer = steerTo;
   }, [steerTo]);
+  // The same, for a fresh start and for reading the session's state.
+  const sessionRefForDev = useRef(session);
+  sessionRefForDev.current = session;
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    const w = window as unknown as { __yumeRestart?: (prompt: string) => Promise<boolean>; __yumeSession?: () => unknown };
+    w.__yumeRestart = (prompt) => sessionRefForDev.current.restart(prompt);
+    w.__yumeSession = () => {
+      const s = sessionRefForDev.current as WorldSession & { events?: string[] };
+      return { status: s.status, runStarted: s.runStarted, restarting: s.restarting, error: s.error, events: s.events };
+    };
+  }, []);
 
   /** Hold off fetching the next card for a moment, e.g. while a steer lands. */
   const holdTurn = useCallback((ms: number) => {
@@ -319,9 +441,12 @@ function IsekaiSession({
   // echo it in English without the second line cutting off the first.
   // `onEnding` fires once, a little before the last line finishes (or at once
   // if the sequence is cut off), which is when "stop talking" has to be sent.
-  const speakSequence = useCallback((lines: string[], opts: { onEnding?: () => void } = {}) => {
+  const speakSequence = useCallback((lines: string[], opts: { onEnding?: () => void; lang?: Learn } = {}) => {
     sequenceEnding.current?.();
     const queue = lines.map((l) => l.trim()).filter(Boolean);
+    // The language the lines were asked for in, even if the duet turn passes
+    // while they are still being spoken.
+    const voice = opts.lang ?? learnRef.current;
 
     let ended = false;
     const ending = () => {
@@ -350,7 +475,7 @@ function IsekaiSession({
       const last = index === queue.length - 1;
       try {
         // Every spoken line is in the language being learned, in its own voice.
-        const audio = new Audio(`/api/tts?lang=${learnRef.current}&text=${encodeURIComponent(queue[index++])}`);
+        const audio = new Audio(`/api/tts?lang=${voice}&text=${encodeURIComponent(queue[index++])}`);
         audioRef.current = audio;
         audio.onplaying = () => {
           if (audibleTimer.current) clearTimeout(audibleTimer.current);
@@ -376,7 +501,7 @@ function IsekaiSession({
     playNext();
   }, []);
 
-  const speak = useCallback((text: string) => speakSequence([text]), [speakSequence]);
+  const speak = useCallback((text: string, lang?: Learn) => speakSequence([text], { lang }), [speakSequence]);
 
   // The spell cast when the player's words change the world (see WorldMagic):
   // it fills the seconds Orbis needs to morph the picture. Only the player's
@@ -386,6 +511,32 @@ function IsekaiSession({
   const endMagic = useCallback(() => setMagic(null), []);
   const magicRef = useRef<Magic | null>(null);
   magicRef.current = magic;
+  /**
+   * A sticker for a change the player's words made: the thing it was about,
+   * from the core set or drawn by fal, kept with a small picture of the world
+   * once the change has landed — which is also when it is handed over.
+   */
+  const earnSticker = useCallback((change: string, said?: string, meaning?: string, quest = false) => {
+    const asked = fetch("/api/sticker", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: change }),
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<StickerReply>) : null))
+      .catch(() => null);
+    setTimeout(async () => {
+      const reply = await asked;
+      if (!reply?.sticker) return;
+      const still = snapshot();
+      const memory = still ? await shrinkImage(still, 200).catch(() => undefined) : undefined;
+      const { id, en, ja, src } = reply.sticker;
+      addSticker({ id, en, ja, src, said, meaning, memory, at: Date.now(), quest });
+      if (!sessionStickers.current.includes(en)) sessionStickers.current.push(en);
+      setStickerCount(albumCount());
+      setToast({ id, en, ja, src, quest });
+    }, STICKER_AFTER_MS);
+  }, []);
+
   const castMagic = useCallback(
     (
       strength: MagicStrength,
@@ -394,13 +545,22 @@ function IsekaiSession({
         sound = strength,
         onReveal,
         meaning,
-      }: { sound?: MagicStrength; onReveal?: () => void; meaning?: string } = {},
+        change,
+        quest = false,
+      }: { sound?: MagicStrength; onReveal?: () => void; meaning?: string; change?: string; quest?: boolean } = {},
     ) => {
       const said = tidyMeaning(meaning);
       setMagic({ id: Date.now(), strength, words, meaning: said, onReveal });
-      // A change the player's words made is a moment for the dream reel; the
-      // steer goes out right after this, so its clip covers the change.
-      if (words && strength !== "small") recorder.current?.capture({ said: words, meaning: said, strength });
+      if (words && strength !== "small") {
+        // A change the player's words made is a moment for the dream reel; the
+        // steer goes out right after this, so its clip covers the change.
+        recorder.current?.capture({ said: words, meaning: said, strength });
+        if (change) earnSticker(change, words, said, quest);
+        changesSinceQuest.current += 1;
+        changesHere.current += 1;
+        // In a duet, the world now listens for the other player's language.
+        passTurn();
+      }
       const seconds = playMagic(sound, scenarioRef.current?.id);
       // Our own music must not reach the recogniser as the player's voice.
       if (seconds) {
@@ -409,18 +569,20 @@ function IsekaiSession({
         audibleTimer.current = setTimeout(() => setAudible(false), seconds * 1000 + AUDIBLE_TAIL_MS);
       }
     },
-    [],
+    [earnSticker],
   );
 
   const narrateScene = useCallback(
     async (scene: string, aloud = true, change?: string) => {
       if (!scene.trim()) return;
       setNarrating(true);
+      // Narrated in the language of whoever made the change, even if the turn passes meanwhile.
+      const lang = learnRef.current;
       try {
         const res = await fetch("/api/narrate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scene, level: levelId, change, learn: learnRef.current }),
+          body: JSON.stringify({ scene, level: levelId, change, learn: lang }),
         });
         if (!res.ok) {
           setNarration(null);
@@ -428,7 +590,7 @@ function IsekaiSession({
         }
         const data: NarrationData = await res.json();
         setNarration(data);
-        if (aloud) speak(data.japanese);
+        if (aloud) speak(data.japanese, lang);
       } catch {
         setNarration(null);
       } finally {
@@ -442,14 +604,14 @@ function IsekaiSession({
 
   /** Her voice, with her face doing the talking and then the listening. */
   const hinaSays = useCallback(
-    (reply: CompanionReply) => {
+    (reply: CompanionReply, lang: Learn = learnRef.current) => {
       // Beginners hear the English echo too; past that it stays on screen
       // only, so the Japanese keeps carrying the turn. Someone learning English
       // reads her Japanese echo instead: spoken in her English voice, it would
       // be the one line she mispronounces.
-      const echo = levelRef.current <= 2 && learnRef.current === "ja";
+      const echo = levelRef.current <= 2 && lang === "ja";
       const lines = echo ? [reply.reply, reply.replyEn] : [reply.reply];
-      speakSequence(lines, { onEnding: () => steerTo(COMPANION_LISTENING) });
+      speakSequence(lines, { onEnding: () => steerTo(COMPANION_LISTENING), lang });
     },
     [speakSequence, steerTo],
   );
@@ -696,6 +858,10 @@ function IsekaiSession({
   // to Hina, she answers in Japanese, and her answer steers the world.
   const talkToCompanion = async (greeting = false) => {
     lastActivityAt.current = Date.now();
+    // Her reply is in this player's language, even if a duet turn passes meanwhile.
+    const lang = learnRef.current;
+    // She remembers your earlier dreams.
+    const memories = describeDreams(recentDreams(3));
     const said = answer.trim();
     if ((!greeting && !said) || checking || !scenario) return;
     setChecking(true);
@@ -704,15 +870,20 @@ function IsekaiSession({
     // voice take ~3s to come back, and a prompt takes 2-4s to reach her face.
     steerTo(COMPANION_TALKING);
     try {
-      const res = await fetch("/api/companion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          greeting
-            ? { greeting: true, scene: runningScene, level: levelId, learn: learnRef.current }
-            : { said, scene: runningScene, level: levelId, history: conversation, learn: learnRef.current },
-        ),
-      });
+      const ask = () =>
+        fetch("/api/companion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            greeting
+              ? { greeting: true, scene: runningScene, level: levelId, learn: lang, memories }
+              : { said, scene: runningScene, level: levelId, history: conversation, learn: lang, memories },
+          ),
+        });
+      let res = await ask();
+      // Her first words are the whole welcome: a model hiccup must not leave
+      // her standing there silent, so the greeting gets a second try.
+      if (!res.ok && greeting) res = await ask();
       if (!res.ok) {
         steerTo(COMPANION_LISTENING);
         if (!greeting) setFeedback({ ok: false, text: `${COMPANION_NAME} didn't catch that — try again.` });
@@ -737,10 +908,10 @@ function IsekaiSession({
         );
         // One clear change on top of the talking she is already doing — the
         // world around her is not restated, per the Orbis prompt guide.
-        if (!greeting) castMagic("medium", said, { sound: "small", meaning: data.heardMeaning });
+        if (!greeting) castMagic("medium", said, { sound: "small", meaning: data.heardMeaning, change: data.sceneAddEn });
         steerTo(whileCompanionTalks(data.sceneAddEn));
       }
-      hinaSays(data);
+      hinaSays(data, lang);
     } catch {
       steerTo(COMPANION_LISTENING);
     } finally {
@@ -790,7 +961,19 @@ function IsekaiSession({
     setPanelOpen(false);
     recorder.current?.reset();
     sessionWords.current = [];
+    sessionStickers.current = [];
     setDreamMoments(null);
+    setQuest(null);
+    questsDone.current = [];
+    changesSinceQuest.current = 0;
+    setPortal(null);
+    setTravelling(false);
+    visited.current = [];
+    changesHere.current = 0;
+    placeStartedAt.current = 0;
+    setToast(null);
+    // Made on this click, which is what lets a browser play it.
+    ambience.current ??= createAmbience();
     // The かな card is the choose rung by name, so picking it means that rung
     // however far up the ladder you had climbed.
     if (chosen.id === "choices") setLevelId(1);
@@ -824,6 +1007,7 @@ function IsekaiSession({
   };
 
   const leaveWorld = async () => {
+    ambience.current?.stop();
     sequenceEnding.current = null;
     audioRef.current?.pause();
     setSpeaking(false);
@@ -847,9 +1031,19 @@ function IsekaiSession({
     setSpeaking(false);
     setMagic(null);
     setPhase("complete");
+    ambience.current?.stop();
     const rec = recorder.current;
     if (ended) rec?.stop();
-    setDreamMoments(rec ? await rec.settle() : []);
+    const moments = rec ? await rec.settle() : [];
+    setDreamMoments(moments);
+    // Kept for next time, so Hina can remember it.
+    rememberDream({
+      at: Date.now(),
+      world: scenarioRef.current?.titleEn ?? "a dream",
+      learn: learnRef.current,
+      said: moments.slice(-4).map((m) => ({ text: m.said, meaning: m.meaning })),
+      stickers: [...sessionStickers.current],
+    });
     if (!ended) await session.disconnectSession();
   };
   const finishRef = useRef(finishWorld);
@@ -867,7 +1061,7 @@ function IsekaiSession({
     setWorldEvent(null);
     setTurns((t) => t + 1);
     setCorrectTurns((c) => c + 1);
-    castMagic("medium", said, { meaning });
+    castMagic("medium", said, { meaning, change: sceneAddEn });
     steerTo(asChange(sceneAddEn));
     holdTurn(1200);
   };
@@ -895,17 +1089,22 @@ function IsekaiSession({
     // The narrator describes the new world once the mist has cleared on it.
     castMagic("big", challenge.sentenceKana, {
       meaning: challenge.sentenceEn,
+      change: challenge.changeEn,
       onReveal: () => void narrateRef.current(challenge.sceneEn),
     });
     steerTo(challenge.changeEn);
+    settle(() => setSentence(null));
+  };
 
+  /** Once a big change has landed and been heard, the cards come back. */
+  const settle = (done: () => void) => {
     const release = () => {
       if (speakingRef.current || narratingRef.current || magicRef.current) {
         setTimeout(release, 600);
         return;
       }
+      done();
       setTransforming(false);
-      setSentence(null);
       setSentenceStep(0);
       setSentenceState("waiting");
       setTurnHold(false);
@@ -913,14 +1112,122 @@ function IsekaiSession({
     setTimeout(release, AFTER_TRANSFORM_MS);
   };
 
+  /** The quest's sentence was said: the happy ending, and a gold sticker. */
+  const solveQuest = (q: Quest) => {
+    const next = addEvent(sceneEventsRef.current, { text: q.solvedEn, source: "you", said: q.sentenceKana, label: q.title });
+    setSceneEvents(next);
+    setWorldEvent(null);
+    setTurns((t) => t + 1);
+    setCorrectTurns((c) => c + 1);
+    setTransforming(true);
+    setTurnHold(true);
+    questsDone.current.push(q.title);
+    castMagic("big", q.sentenceKana, {
+      meaning: q.sentenceEn,
+      change: q.sticker,
+      quest: true,
+      onReveal: () =>
+        void narrateRef.current(composeScene(scenarioRef.current?.basePrompt ?? "", next), true, q.solvedEn),
+    });
+    changesSinceQuest.current = 0;
+    steerTo(asChange(q.solvedEn));
+    settle(() => setQuest(null));
+  };
+
+  /**
+   * The magic words were said at the door: the biggest spell there is, and
+   * behind its mist Orbis starts afresh somewhere new — a new place, and a
+   * clean picture, in the same session. The dream goes on as free play there.
+   */
+  const travel = (dest: Destination, card: SentenceChallenge) => {
+    visited.current.push(dest.id);
+    setTravelling(true);
+    setTransforming(true);
+    setTurnHold(true);
+    setTurns((t) => t + 1);
+    setCorrectTurns((c) => c + 1);
+    castMagic("big", card.sentenceKana, {
+      meaning: card.sentenceEn,
+      change: "a glowing magic door",
+      onReveal: () => void narrateRef.current(dest.basePrompt),
+    });
+    const world: Scenario = {
+      id: "freeform",
+      titleJp: dest.titleJp,
+      titleEn: dest.titleEn,
+      basePrompt: dest.basePrompt,
+      steps: [],
+    };
+    // Behind the mist: through the door, and a fresh start on the other side.
+    setTimeout(async () => {
+      setScenario(world);
+      setSceneEvents([]);
+      setWorldEvent(null);
+      setStepIndex(0);
+      setSentence(null);
+      setQuest(null);
+      await session.restart(dest.basePrompt);
+      await freshFrames();
+      placeStartedAt.current = Date.now();
+      changesHere.current = 0;
+      setTravelling(false);
+    }, MIST_UP_MS);
+    settle(() => setPortal(null));
+  };
+
+  /**
+   * Nobody took the door, and the picture is about to start drifting: the
+   * dream starts itself afresh in place, inside a spell, from the scene as it
+   * now stands.
+   */
+  const refreshWorld = () => {
+    const world = scenarioRef.current;
+    if (!world) return;
+    setTravelling(true);
+    setTurnHold(true);
+    castMagic("big");
+    setTimeout(async () => {
+      await session.restart(composeScene(world.basePrompt, sceneEventsRef.current));
+      await freshFrames();
+      placeStartedAt.current = Date.now();
+      setTravelling(false);
+    }, MIST_UP_MS);
+    settle(() => setPortal(null));
+  };
+
+  const openPortal = () => {
+    const dest = pickDestination(visited.current);
+    setPortal(dest);
+    setSceneEvents((events) => addEvent(events, { text: DOOR_APPEARS, source: "world" }));
+    steerTo(DOOR_APPEARS);
+    startCard(portalChallenge(learnRef.current));
+  };
+
+  /** A quest or the door takes over the card: the first word for beginners, the whole sentence above. */
+  const startCard = (card: SentenceChallenge) => {
+    const words = card.parts.filter((p) => p.kind === "word");
+    const whole = levelRef.current >= FIRST_FREE_LEVEL_ID;
+    setSentenceStep(whole ? words.length : 0);
+    setSentenceState("waiting");
+    speak(whole ? card.sentenceKana : words[0]?.kana ?? card.sentenceKana);
+  };
+
   /**
    * Rung 0, graded on the device with no network call: this is the first
    * Japanese a beginner ever speaks, and a second of latency at that moment is
    * the difference between "the world answered me" and "I submitted a form".
    */
-  const sentenceWords = sentence ? sentence.parts.filter((p) => p.kind === "word") : [];
-  const sentenceRef = useRef(sentence);
-  sentenceRef.current = sentence;
+  // The card being learned: the door's magic words, a quest's sentence, or
+  // the rung-0 sentence, in that order.
+  const portalCard = useMemo(() => (portal ? portalChallenge(learn) : null), [portal, learn]);
+  const questCard = useMemo<SentenceChallenge | null>(
+    () => (quest ? { ...quest, changeEn: quest.solvedEn, sceneEn: "" } : null),
+    [quest],
+  );
+  const card = portalCard ?? questCard ?? sentence;
+  const sentenceWords = card ? card.parts.filter((p) => p.kind === "word") : [];
+  const sentenceRef = useRef(card);
+  sentenceRef.current = card;
   const judging = useRef(false);
 
   /**
@@ -949,9 +1256,9 @@ function IsekaiSession({
 
   const saySentence = async (said: string) => {
     lastActivityAt.current = Date.now();
-    if (!sentence || !scenario || transforming || judging.current) return;
+    if (!card || !scenario || transforming || judging.current) return;
     if (sentenceState === "ok" || !said.trim()) return;
-    const asked = sentence;
+    const asked = card;
     const english = learn === "en";
 
     if (sentenceStep < sentenceWords.length) {
@@ -975,7 +1282,7 @@ function IsekaiSession({
       setVocab(saveWord({ surface: word.kana, reading, meaning: word.english ?? "" }));
       noteWord(word.kana, word.english ?? "");
       const nextStep = sentenceStep + 1;
-      const nextTarget = nextStep < sentenceWords.length ? sentenceWords[nextStep].kana : sentence.sentenceKana;
+      const nextTarget = nextStep < sentenceWords.length ? sentenceWords[nextStep].kana : card.sentenceKana;
       setTimeout(() => {
         setSentenceStep(nextStep);
         setSentenceState("waiting");
@@ -986,18 +1293,20 @@ function IsekaiSession({
 
     const ok =
       (english ? matchesSentenceEn(said, sentenceWords) : matchesSentence(said, sentenceWords)).ok ||
-      (await heardAs(said, sentence.sentenceKana, sentence.sentenceEn));
+      (await heardAs(said, card.sentenceKana, card.sentenceEn));
     if (sentenceRef.current !== asked) return;
     if (!ok) {
       setSentenceState("retry");
       recordTurn(false);
-      speak(sentence.sentenceKana);
+      speak(card.sentenceKana);
       return;
     }
     setSentenceState("ok");
     recordTurn(true);
     setStreak((s) => s + 1);
-    transformWorld(sentence);
+    if (portal && card === portalCard) travel(portal, card);
+    else if (quest && card === questCard) solveQuest(quest);
+    else transformWorld(card);
   };
 
   /** Rung 2. No option is wrong — whichever is picked is what happens. */
@@ -1070,7 +1379,7 @@ function IsekaiSession({
         const nextScene = scenario ? composeScene(scenario.basePrompt, nextEvents) : runningScene;
         setSceneEvents(nextEvents);
         setWorldEvent(null);
-        castMagic("medium", answer.trim(), { meaning: data.meaning });
+        castMagic("medium", answer.trim(), { meaning: data.meaning, change: addition });
         if (addition) steerTo(asChange(addition));
         setAnswer("");
 
@@ -1097,16 +1406,93 @@ function IsekaiSession({
   // Orbis bills for every wall-clock second the GPU is held, and the token
   // caps a session at 300s — so the world would otherwise vanish mid-take with
   // no warning. This tracks elapsed time and turns amber as the cap nears.
+  // Counted from the world's first frame, and not restarted by a portal or a
+  // refresh: the cap is on the session, which those do not end.
   const [elapsed, setElapsed] = useState(0);
+  const clockStartedAt = useRef(0);
+  const elapsedRef = useRef(0);
+  elapsedRef.current = elapsed;
   useEffect(() => {
-    if (!session.runStarted) {
+    if (phase !== "playing") {
+      clockStartedAt.current = 0;
       setElapsed(0);
       return;
     }
-    const startedAt = Date.now();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    if (session.runStarted && !clockStartedAt.current) clockStartedAt.current = Date.now();
+    const id = setInterval(() => {
+      if (clockStartedAt.current) setElapsed(Math.floor((Date.now() - clockStartedAt.current) / 1000));
+    }, 1000);
     return () => clearInterval(id);
-  }, [session.runStarted]);
+  }, [phase, session.runStarted]);
+
+  const travellingRef = useRef(travelling);
+  travellingRef.current = travelling;
+  const transformingRef = useRef(transforming);
+  transformingRef.current = transforming;
+
+  // A quest turns up every few changes, once nothing else is going on.
+  useEffect(() => {
+    if (phase !== "playing" || !session.runStarted || !scenario || isCompanion) return;
+    if (quest || portal || travelling || transforming || turnHold || fetchingQuest.current) return;
+    if (changesSinceQuest.current < QUEST_EVERY_CHANGES || elapsedRef.current > SESSION_S - 60) return;
+    fetchingQuest.current = true;
+    const world = scenario;
+    void fetch("/api/quest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scene: runningScene, learn: learnRef.current, recent: questsDone.current }),
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<Quest>) : null))
+      .then((q) => {
+        if (!q || scenarioRef.current !== world || portalRef.current || transformingRef.current) return;
+        changesSinceQuest.current = 0;
+        setQuest(q);
+        setSceneEvents((events) => addEvent(events, { text: q.problemEn, source: "world" }));
+        steerTo(asChange(q.problemEn));
+        playMagic("small", world.id);
+        startCard({ ...q, changeEn: q.solvedEn, sceneEn: "" });
+      })
+      .catch(() => {})
+      .finally(() => {
+        fetchingQuest.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, session.runStarted, scenario, isCompanion, quest, portal, travelling, transforming, turnHold, sceneEvents.length]);
+
+  // The door, and the refresh: checked every couple of seconds while playing.
+  const openPortalRef = useRef(openPortal);
+  openPortalRef.current = openPortal;
+  const refreshRef = useRef(refreshWorld);
+  refreshRef.current = refreshWorld;
+  useEffect(() => {
+    if (phase !== "playing" || !session.runStarted || isCompanion) return;
+    if (!placeStartedAt.current) placeStartedAt.current = Date.now();
+    const id = setInterval(() => {
+      if (travellingRef.current || transformingRef.current || magicRef.current) return;
+      if (SESSION_S - elapsedRef.current < 45) return;
+      const here = (Date.now() - placeStartedAt.current) / 1000;
+      if (here >= REFRESH_S) {
+        refreshRef.current();
+      } else if (
+        !portalRef.current &&
+        !questRef.current &&
+        (here >= PORTAL_AFTER_S || changesHere.current >= PORTAL_AFTER_CHANGES)
+      ) {
+        openPortalRef.current();
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [phase, session.runStarted, isCompanion]);
+
+  // The world's own sound follows the scene, dips under voices, and makes way
+  // when the player turns on the sound Orbis itself streams.
+  useEffect(() => {
+    if (phase === "playing" && session.runStarted) ambience.current?.setScene(runningScene);
+  }, [phase, session.runStarted, runningScene]);
+  useEffect(() => ambience.current?.duck(audible || speaking), [audible, speaking]);
+  // The ambience stands in for the world while its own sound is off, and
+  // hands over when the player turns that on.
+  useEffect(() => ambience.current?.setEnabled(session.muted), [session.muted]);
 
   const statusLabel = rehearsing
     ? "Rehearsal"
@@ -1119,7 +1505,8 @@ function IsekaiSession({
   // Once a world has been playing, losing the run means the session ended —
   // the 5-minute cap, or the connection dropping. Say so, rather than leaving
   // a frozen frame with nothing to explain it.
-  const worldEnded = phase === "playing" && !session.runStarted;
+  // A portal or a refresh stops the run for a moment on purpose.
+  const worldEnded = phase === "playing" && !session.runStarted && !session.restarting && !travelling;
 
   // A world that never wakes: the session dropped or errored before its first
   // frame, or Orbis took far longer than its usual ~20s. Say so and offer
@@ -1153,7 +1540,9 @@ function IsekaiSession({
     const again = scenario;
     void leaveWorld().then(() => again && void enterScenario(again));
   };
-  const answersFreely = isCompanion || (level.mode === "free" && (isFreeform || Boolean(step)));
+  // A quest or the door takes the card over, whatever the rung.
+  const overlay = Boolean(portalCard || questCard);
+  const answersFreely = !overlay && (isCompanion || (level.mode === "free" && (isFreeform || Boolean(step))));
 
   const levelPicker = (
     <>
@@ -1198,6 +1587,7 @@ function IsekaiSession({
 
   return (
     <div className="isekai">
+      <StickerAlbum open={albumOpen} onClose={() => setAlbumOpen(false)} learn={learn} />
       {phase === "pick" && (
         <>
           {/* A failed connect drops straight back here, and the world view
@@ -1209,7 +1599,7 @@ function IsekaiSession({
               <span>{session.error}</span>
             </div>
           )}
-          <ScenarioPicker onPick={setPendingWorld} />
+          <ScenarioPicker onPick={setPendingWorld} onAlbum={() => setAlbumOpen(true)} stickers={stickerCount} />
           {pendingWorld && (
             <LearnChooser
               world={pendingWorld}
@@ -1217,9 +1607,12 @@ function IsekaiSession({
               onClose={() => setPendingWorld(null)}
               onChoose={(chosen) => {
                 const world = pendingWorld;
-                setLearn(chosen);
-                learnRef.current = chosen;
-                saveLearn(chosen);
+                // Together: player 1 (learning Japanese) goes first.
+                const first: Learn = chosen === "duet" ? "ja" : chosen;
+                setDuet(chosen === "duet");
+                setLearn(first);
+                learnRef.current = first;
+                if (chosen !== "duet") saveLearn(chosen);
                 setLearnRemembered(true);
                 setPendingWorld(null);
                 void enterScenario(world);
@@ -1244,13 +1637,22 @@ function IsekaiSession({
             ) : (
               <OrbisPlayer
                 muted={session.muted}
-                runStarted={session.runStarted}
+                // Kept on screen through a restart: the last picture holds
+                // under the mist instead of dropping to black.
+                runStarted={session.runStarted || session.restarting || travelling}
                 status={session.status}
                 fit="cover"
               />
             )}
             <div className="world-scrim" aria-hidden="true" />
+            {travelling && (
+              <div className="world-veil" aria-live="polite">
+                <span lang="ja">{scenario?.titleJp}</span>
+                <small>{scenario?.titleEn}</small>
+              </div>
+            )}
             <WorldMagic magic={magic} onDone={endMagic} world={scenario?.id ?? ""} />
+            <StickerToast sticker={toast} onDone={endToast} learn={learn} />
             {waking && !wakeFailed && (
               <div className="isekai-loading">
                 <span className="isekai-spinner" aria-hidden="true" />
@@ -1272,6 +1674,11 @@ function IsekaiSession({
               {scenario?.titleJp}
               <em>{scenario?.titleEn}</em>
             </span>
+            {duet && (
+              <span className={`duet-turn ${learn}`} key={learn} aria-live="polite">
+                {learn === "ja" ? "Player 1 · say it in Japanese" : "Player 2 · えいごで どうぞ"}
+              </span>
+            )}
             <div className="world-top-right">
               {session.runStarted && (
                 <div className={`session-meter ${elapsed >= 240 ? "warn" : ""}`}>
@@ -1446,6 +1853,10 @@ function IsekaiSession({
                   </div>
                 )}
 
+                <button type="button" className="album-open" onClick={() => setAlbumOpen(true)}>
+                  Open your sticker book <span>{stickerCount}</span>
+                </button>
+
                 <button className="isekai-submit isekai-submit-wide" onClick={() => void leaveWorld()}>
                   Choose another world
                 </button>
@@ -1498,12 +1909,29 @@ function IsekaiSession({
                     scripted world — a beginner cannot hit a scripted
                     objective, and the reward must never be gated behind
                     competence. */}
-                {!isCompanion && level.mode !== "free" && (
+                {!isCompanion && (overlay || level.mode !== "free") && (
                   <>
-                    {level.mode === "sentence" && sentence ? (
+                    {(overlay || level.mode === "sentence") && card ? (
                       <>
+                        {portal && overlay ? (
+                          <div className="quest-banner portal">
+                            <span className="quest-tag">{learn === "en" ? "まほうの ドア" : "A magic door"}</span>
+                            <strong lang={lang.helperTag}>
+                              {learn === "en" ? `ドアの むこうは「${portal.titleJp}」` : `Behind it: ${portal.titleEn}`}
+                            </strong>
+                            <span lang={lang.helperTag}>
+                              {learn === "en" ? "まほうの ことばで ドアを あけよう！" : "Say the magic words to open it!"}
+                            </span>
+                          </div>
+                        ) : quest && overlay ? (
+                          <div className="quest-banner">
+                            <span className="quest-tag">{learn === "en" ? "クエスト" : "Quest"}</span>
+                            <strong lang={lang.helperTag}>{quest.title}</strong>
+                            <span lang={lang.helperTag}>{quest.ask}</span>
+                          </div>
+                        ) : null}
                         <SentenceCard
-                          challenge={sentence}
+                          challenge={card}
                           step={sentenceStep}
                           state={sentenceState}
                           heard={answer}
@@ -1515,7 +1943,7 @@ function IsekaiSession({
                             speak(
                               sentenceStep < sentenceWords.length
                                 ? sentenceWords[sentenceStep].kana
-                                : sentence.sentenceKana,
+                                : card.sentenceKana,
                             )
                           }
                           onTyped={saySentence}
@@ -1667,6 +2095,10 @@ function IsekaiSession({
               </button>
             </div>
 
+            <button type="button" className="album-open" onClick={() => setAlbumOpen(true)}>
+              Sticker book <span>{stickerCount}</span>
+            </button>
+
             {phase === "playing" && levelPicker}
 
             {!isCompanion && narration && (
@@ -1778,7 +2210,16 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
-function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
+function ScenarioPicker({
+  onPick,
+  onAlbum,
+  stickers,
+}: {
+  onPick: (s: Scenario) => void;
+  onAlbum: () => void;
+  /** How many stickers are in the book already. */
+  stickers: number;
+}) {
   const [freeformOpen, setFreeformOpen] = useState(false);
   const [freeformIdea, setFreeformIdea] = useState("");
   const reducedMotion = usePrefersReducedMotion();
@@ -1829,6 +2270,9 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
         <div className="worlds-header">
           <span className="section-eyebrow">Pick your starting point</span>
           <h2 className="section-title">Choose a world</h2>
+          <button type="button" className="album-open" onClick={onAlbum}>
+            My sticker book <span>{stickers}</span>
+          </button>
         </div>
         <div className="scenario-grid">
           {SCENARIOS.map((s, i) => (
@@ -1953,7 +2397,7 @@ function LearnChooser({
   world: Scenario;
   /** Last time's choice, if there was one. */
   current: Learn | null;
-  onChoose: (learn: Learn) => void;
+  onChoose: (learn: Learn | "duet") => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -2002,6 +2446,15 @@ function LearnChooser({
             </span>
             <span className="learn-desc" lang="ja">
               えいごで せかいに はなしかけよう。ヒントは にほんごで。
+            </span>
+          </button>
+          <button type="button" className="learn-option learn-duet" onClick={() => onChoose("duet")}>
+            <span className="learn-big">
+              Together <span lang="ja">いっしょに</span>
+            </span>
+            <span className="learn-name">Two players, two languages</span>
+            <span className="learn-desc">
+              One of you speaks Japanese, the other English. Take turns — each word you say shows your friend what it means.
             </span>
           </button>
         </div>
@@ -2175,6 +2628,16 @@ function MicButton({
   holdRef.current = holdWhileSpeaking;
   const speechRef = useRef(speech);
   speechRef.current = speech;
+  // The turn passed to the other language: stop, and the restart listens for it.
+  useEffect(() => {
+    const current = recognitionRef.current;
+    if (!current || !armedRef.current || current.lang === speech) return;
+    try {
+      current.stop();
+    } catch {
+      // Already stopping; onend restarts it either way.
+    }
+  }, [speech]);
 
   // Handlers are installed once but fire seconds later, so they read the
   // latest callbacks from a ref rather than closing over stale ones.
@@ -2246,9 +2709,11 @@ function MicButton({
     };
     recognition.onend = () => {
       setHearing(false);
-      // Browsers cut the stream every ~60s; restart unless we were stopped.
+      // Browsers cut the stream every ~60s; restart unless we were stopped —
+      // in whichever language is wanted now (a duet passes the turn).
       if (armedRef.current) {
         try {
+          recognition.lang = speechRef.current;
           recognition.start();
         } catch {
           armedRef.current = false;

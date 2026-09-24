@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { asLearn, type Learn } from "@/lib/learn";
 import { chatJson, hasModel } from "@/lib/llm";
-import { toRomaji } from "@/lib/romaji";
+import { partsProblem, shapeSentence, type TaughtSentence } from "@/lib/sentence-shape";
 
 export const runtime = "nodejs";
 
@@ -13,40 +13,14 @@ type SentenceRequest = {
   learn?: Learn;
 };
 
-// In English mode (lib/learn.ts) the same shape carries an English sentence:
-// `kana` is the English word, `romaji` its katakana reading for a Japanese
-// child, `english` its Japanese meaning, and `sentenceEn` the whole meaning.
+export type { SentencePart } from "@/lib/sentence-shape";
 
-export type SentencePart = {
-  /** Kana only — this rung is for people who cannot read kanji. */
-  kana: string;
-  kind: "word" | "particle";
-  /** Words only. */
-  romaji?: string;
-  english?: string;
-  /**
-   * Other spellings that should count as saying this word — above all the
-   * kanji. Speech recognition runs in ja-JP and returns 雪, not ゆき.
-   */
-  accept?: string[];
-};
-
-export type SentenceChallenge = {
-  parts: SentencePart[];
-  /** The sentence as it is read, particles attached: "ゆきが ふる". */
-  sentenceKana: string;
-  /** Word by word, so a beginner can sound it out: "yuki ga furu". */
-  sentenceRomaji: string;
-  sentenceEn: string;
+export type SentenceChallenge = TaughtSentence & {
   /** The one clear step Orbis is steered with when the sentence lands. */
   changeEn: string;
   /** The whole world after that step. It becomes the new base scene. */
   sceneEn: string;
 };
-
-const KANJI = /[一-龯㐀-䶿]/;
-const KANA_ONLY = /^[぀-ヿー]+$/;
-const PARTICLES = new Set(["が", "は", "を", "に", "で", "の", "と", "へ", "も"]);
 
 // Most words are taught and then said once; the sentence is the payoff. So the
 // sentence has to be worth saying: when it lands, the world should look like a
@@ -84,60 +58,16 @@ type Draft = {
 };
 
 /** Returns a reason the draft cannot be used, or null if it can. */
-function problem(draft: Draft): string | null {
-  const parts = draft.parts ?? [];
-  const words = parts.filter((p) => p.kind === "word");
-  if (words.length < 2 || words.length > 3) return "it did not have 2 or 3 content words";
-  for (const part of parts) {
-    const kana = part.kana?.trim() ?? "";
-    if (!kana) return "a part had no kana";
-    if (KANJI.test(kana) || !KANA_ONLY.test(kana)) return `"${kana}" was not kana only`;
-    if (part.kind === "particle" && !PARTICLES.has(kana)) return `"${kana}" is not a simple particle`;
-    if (part.kind !== "word" && part.kind !== "particle") return "a part had no kind";
-  }
+function problem(learn: Learn, draft: Draft & DraftEn): string | null {
+  const parts = partsProblem(learn, draft.parts);
+  if (parts) return parts;
   if (!draft.changeEn?.trim() || !draft.sceneEn?.trim()) return "changeEn or sceneEn was missing";
   return null;
 }
 
-// は and へ are read wa and e when they are particles; romaji is only a
-// scaffold, but a wrong one teaches the wrong sound.
-function particleRomaji(kana: string): string {
-  if (kana === "は") return "wa";
-  if (kana === "へ") return "e";
-  return toRomaji(kana);
-}
-
-function toChallenge(draft: Draft): SentenceChallenge {
-  const parts: SentencePart[] = (draft.parts ?? []).map((p) => {
-    const kana = p.kana!.trim();
-    if (p.kind === "particle") return { kana, kind: "particle" };
-    return {
-      kana,
-      kind: "word",
-      // Our own transliteration over the model's: deterministic, and it is
-      // what a beginner will actually try to pronounce.
-      romaji: toRomaji(kana),
-      english: p.english?.trim() ?? "",
-      accept: Array.isArray(p.accept)
-        ? p.accept.filter((a): a is string => typeof a === "string" && a.trim().length > 0)
-        : [],
-    };
-  });
-
-  // Particles ride on the word before them, the way the sentence is read.
-  const chunks: string[] = [];
-  for (const part of parts) {
-    if (part.kind === "particle" && chunks.length) chunks[chunks.length - 1] += part.kana;
-    else chunks.push(part.kana);
-  }
-
+function toChallenge(learn: Learn, draft: Draft & DraftEn): SentenceChallenge {
   return {
-    parts,
-    sentenceKana: chunks.join(" "),
-    sentenceRomaji: parts
-      .map((p) => (p.kind === "particle" ? particleRomaji(p.kana) : p.romaji))
-      .join(" "),
-    sentenceEn: draft.sentenceEn?.trim() ?? "",
+    ...shapeSentence(learn, draft.parts ?? [], (learn === "en" ? draft.meaning : draft.sentenceEn) ?? ""),
     changeEn: draft.changeEn!.trim(),
     sceneEn: draft.sceneEn!.trim(),
   };
@@ -172,53 +102,6 @@ type DraftEn = {
   sceneEn?: string;
 };
 
-const ENGLISH_WORD = /^[A-Za-z][A-Za-z'-]*$/;
-const SMALL_WORDS = new Set(["the", "a", "an"]);
-
-function problemEn(draft: DraftEn): string | null {
-  const parts = draft.parts ?? [];
-  const words = parts.filter((p) => p.kind === "word");
-  if (words.length < 2 || words.length > 3) return "it did not have 2 or 3 content words";
-  for (const part of parts) {
-    const word = part.word?.trim() ?? "";
-    if (!ENGLISH_WORD.test(word)) return `"${word}" was not a single English word`;
-    if (part.kind === "small" && !SMALL_WORDS.has(word.toLowerCase())) return `"${word}" is not "the" or "a"`;
-    if (part.kind !== "word" && part.kind !== "small") return "a part had no kind";
-  }
-  if (!draft.changeEn?.trim() || !draft.sceneEn?.trim()) return "changeEn or sceneEn was missing";
-  return null;
-}
-
-// "the" and "a" play the part particles play in Japanese: shown, never taught
-// on their own, and not needed for the sentence to count.
-function toChallengeEn(draft: DraftEn): SentenceChallenge {
-  const parts: SentencePart[] = (draft.parts ?? []).map((p) => {
-    const word = p.word!.trim().toLowerCase();
-    if (p.kind === "small") return { kana: word, kind: "particle", romaji: p.reading?.trim() };
-    return {
-      kana: word,
-      kind: "word",
-      romaji: p.reading?.trim() ?? "",
-      english: p.meaning?.trim() ?? "",
-      accept: Array.isArray(p.accept)
-        ? p.accept.filter((a): a is string => typeof a === "string" && a.trim().length > 0)
-        : [],
-    };
-  });
-  const sentence = parts.map((p) => p.kana).join(" ");
-  return {
-    parts,
-    sentenceKana: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`,
-    sentenceRomaji: parts
-      .map((p) => p.romaji ?? "")
-      .filter(Boolean)
-      .join(" "),
-    sentenceEn: draft.meaning?.trim() ?? "",
-    changeEn: draft.changeEn!.trim(),
-    sceneEn: draft.sceneEn!.trim(),
-  };
-}
-
 export async function POST(request: Request) {
   let body: SentenceRequest;
   try {
@@ -248,7 +131,7 @@ export async function POST(request: Request) {
     });
 
   try {
-    const check = (d: Draft & DraftEn) => (learn === "en" ? problemEn(d) : problem(d));
+    const check = (d: Draft & DraftEn) => problem(learn, d);
     let draft = await ask();
     let reason = check(draft);
     // The model will reach for kanji, or a fourth word, unless it is caught
@@ -261,7 +144,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Could not build a sentence: ${reason}` }, { status: 502 });
     }
 
-    const challenge = learn === "en" ? toChallengeEn(draft) : toChallenge(draft);
+    const challenge = toChallenge(learn, draft);
     return NextResponse.json(challenge satisfies SentenceChallenge);
   } catch (error) {
     console.error("Sentence failed", error);

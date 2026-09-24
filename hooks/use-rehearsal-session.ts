@@ -19,6 +19,8 @@ export type WorldSession = Pick<
   | "selectImage"
   | "startRun"
   | "steer"
+  | "restart"
+  | "restarting"
   | "toggleMuted"
 >;
 
@@ -66,6 +68,12 @@ export function useRehearsalSession(): WorldSession & { lastSteer: string } {
       setLastSteer(prompt);
       return true;
     },
+    restart: async (next: string) => {
+      setPrompt(next);
+      setLastSteer(next);
+      return true;
+    },
+    restarting: false,
     toggleMuted: () => setMuted((m) => !m),
   };
 }
