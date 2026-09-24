@@ -1,79 +1,178 @@
-# Yume 夢
+<p align="center">
+  <img src="docs/media/banner.gif" width="100%" alt="Yume: a girl's spoken words rise as ribbons of light into a sky turning from sunset to a starry night">
+</p>
 
-> *ゆめ — "dream": you've been pulled into a living dream, and the old belief of* kotodama (言霊) *holds here — spoken words carry the power to shape reality.*
+<p align="center">
+  <b>Say it in Japanese, and a live AI video world changes around you.</b><br>
+  <sub>A language-learning game built on <a href="https://www.reactor.inc/models/visko-orbis-stable">Visko Orbis</a>, a real-time, steerable video model · made for the <a href="https://www.visko.ai/challenge/orbis-september-2026">Visko Orbis Online Challenge</a></sub>
+</p>
 
-An immersive Japanese language-learning game built on [Orbis](https://www.reactor.inc/models/visko-orbis-stable), Visko's real-time steerable video model. You're pulled into a living, AI-generated dream world — and the only way to change it is to correctly describe the change **in Japanese**. Get it right, and the world visibly moves, live, in front of you.
+<p align="center">
+  <a href="#see-it-live">See it</a> ·
+  <a href="#how-a-turn-works">How a turn works</a> ·
+  <a href="#why-it-has-to-be-live-video">Why live video</a> ·
+  <a href="#what-i-learned-about-orbis">What I learned about Orbis</a> ·
+  <a href="#the-stack">Stack</a> ·
+  <a href="#run-it-yourself">Run it</a>
+</p>
 
-Built for the [Visko Orbis Online Challenge](https://www.visko.ai/challenge/orbis-september-2026).
+---
 
-## The idea
+**Yume** (夢, *dream*) drops you into a world that is being generated live, frame by frame, and keeps moving whether you speak or not. The only way to change it is to say what you want **in Japanese**. If you are understood, that same running world transforms in front of you. If you are not, nothing happens: no buzzer, no red cross, just a world that did not move.
 
-Most language apps test you with flashcards and multiple choice. Yume tests you with **consequence**: you type or speak a Japanese sentence, and if — and only if — it actually communicates the meaning, the live video world reacts. Say "ねこが こうえんに います" and a cat appears in the park, on screen, within about two seconds. Say something that doesn't land, and the world just... stays still.
+There is an old Japanese belief, *kotodama* (言霊), that words have a spirit, and that saying something can make it real. Yume is the place where that is literally true.
 
-That's comprehensible output made visible. It's also the whole reason this has to be built on a *live, steerable* video model rather than a one-shot generator — the world has to keep running and keep reacting to unpredictable input, turn after turn, which is exactly what Orbis's chunked `set_prompt` steering is designed for.
+It starts from **zero Japanese**. A first-time player is taught one short sentence a word at a time, says it back, and watches the whole world turn to night.
+
+## See it live
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/media/words.gif" alt="Learning a sentence one word at a time"></td>
+    <td width="50%"><img src="docs/media/spell.gif" alt="Saying the whole sentence casts a spell and the park turns to a starry night"></td>
+  </tr>
+  <tr>
+    <td><b>Learn a sentence, one word at a time.</b> Each word is spoken, glossed, and lights up when you say it back.</td>
+    <td><b>Say it whole, and your words cast a spell.</b> よるが くる, "night comes", and the live park turns to a starry night.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/wrong-right.gif" alt="A wrong answer changes nothing; the right answer steers the world"></td>
+    <td><img src="docs/media/hina.gif" alt="Hina, a companion who talks with you"></td>
+  </tr>
+  <tr>
+    <td><b>A wrong answer changes nothing.</b> The right one steers the world, and the magic plays while Orbis redraws it.</td>
+    <td><b>Walk with Hina.</b> She answers in Japanese (with English at your level), and what she says changes the world too.</td>
+  </tr>
+</table>
+
+<sub>Real recordings of live Orbis sessions, sped up about 1.5×. Only the player's voice was simulated: a stand-in recogniser was fed the Japanese a player would say.</sub>
+
+## What's in it
+
+- **A living world.** When you go quiet for a while (about 20 seconds), the world drifts on its own: a petal falls, a firefly glows. It is a place, not a clip waiting for input.
+- **A ladder from zero.** Seven rungs, from repeating a sentence you were just taught to describing the scene freely. It adjusts itself as you play and never announces it.
+- **Magic that covers the wait.** A live world takes a few seconds to change. The moment your words land, mist rolls in, the Japanese you said floats up and bursts into stars, and a music-box tune plays (synthesised in the browser, never the same twice). The mist holds until the video itself has changed, then clears on the new world.
+- **Hina, a companion.** Talk to her in Japanese or English. She replies aloud, her face is steered to talk while her voice plays, and her replies steer the world.
+- **Always-on voice.** Nothing to press; just speak. Or type, and romaji counts.
+- **Words that stay.** Every word is hoverable for its reading and meaning. Double-click to save it, and it comes back on a spaced-repetition schedule.
+- **Free play.** Describe any world you like and build it sentence by sentence.
+
+### The ladder
+
+| | Rung | What you do |
+|---|---|---|
+| 0 | つなぐ · Build a sentence | Learn a sentence word by word, then say it whole: the world transforms |
+| 1 | えらぶ · Choose | Pick one of two things to happen, written in kana |
+| 2 | うめる · Fill the gap | The sentence is written for you; supply the missing word |
+| 3 | ひとこと · Single word | Answer with one word |
+| 4 | フレーズ · Short phrase | Two or three words, starting to use particles |
+| 5 | ぶん · Full sentence | A complete sentence with a verb |
+| 6 | びょうしゃ · Description | Describe the scene richly |
 
 ## How a turn works
 
-1. Pick a world (Park, Classroom, Night City — each a short chain of objectives — or describe your own from scratch in Free World mode).
-2. The narrator describes the current scene in Japanese, sized to your level, and reads it aloud (Fish Audio). Every word is individually hoverable for its reading + meaning, and double-clicking one saves it to your personal vocab list.
-3. Type (or use the 🎙️ mic) a Japanese answer at your chosen difficulty — anywhere from a single word up to a full description.
-4. The server grades it with GPT-OSS 120B on Groq if a key is configured, or an offline keyword-match grader if not, and returns feedback plus a corrected sentence.
-5. If it's correct: the running scene description gets the new detail appended, `set_prompt` steers Orbis to it at the next chunk boundary, and the world visibly updates — the narrator then describes the *new* scene as the reward. A wrong answer instead hears the correction spoken back.
-6. Four correct turns later (or whenever you like, in Free World mode), you've shaped an entire scene with nothing but Japanese.
+```mermaid
+sequenceDiagram
+    actor You
+    participant App as Yume (Next.js)
+    participant LLM as GPT-OSS 120B<br/>Cerebras → Groq
+    participant Orbis as Orbis<br/>live video over WebRTC
+    participant Voice as Fish Audio
 
-## Difficulty levels
+    You->>App: speak Japanese (browser speech recognition, always on)
+    alt a beginner repeating what they were taught
+        App->>App: checked on the device, instantly
+    else anything else
+        App->>LLM: were they understood? (meaning, not grammar)
+        LLM-->>App: yes, and the change to make
+    end
+    App->>Orbis: set_prompt: one clear change
+    Note over App,Orbis: the spell plays while Orbis redraws the running world
+    Orbis-->>You: the same world, transformed
+    App->>Voice: narrate the new world
+    Voice-->>You: spoken Japanese
+```
 
-Grading and narration both scale with a level picker in the HUD:
+A wrong answer stops after the second step. The world is never steered, so the video itself is the feedback.
 
-| Level | What you answer with |
+## Why it has to be live video
+
+A learner's next sentence is unpredictable, so the world cannot be pre-rendered. Most AI video works like an oven: describe it, wait, get a finished clip. Orbis doesn't finish. It keeps generating, and it can be steered while it runs, so one world stays alive and every sentence changes *that same world*, mid-flight.
+
+That is the whole game. The video isn't decoration; it's the listener.
+
+## What I learned about Orbis
+
+Measured on live sessions while building this, 23–24 September 2026:
+
+| | |
 |---|---|
-| ひとこと — Single word | One correct word is a full answer |
-| フレーズ — Short phrase | 2–4 words, particles optional |
-| ぶん — Full sentence | A complete sentence, particles + a verb |
-| びょうしゃ — Description | Multiple connected clauses |
+| **A steer lands at the next chunk** | Orbis streams in 33-frame chunks (~1.8s). A whole-world change like nightfall then took **6–9 seconds** to fully land. |
+| **Some changes render, some don't** | Steering the same park: **night, morning and fireworks** came through clearly. **Snow, rain, sunset, autumn leaves and floating lanterns** were faint or absent within 10 seconds. So beginner sentences only offer the ones that render. |
+| **One change per prompt** | Following the Orbis prompt guide, every steer after the first describes one visible change. Restating the whole scene each time reads to the model as a rebuild, and the picture degrades. |
+| **A live world is never still** | To time the magic's reveal, Yume compares the average colour of a 4×3 grid of the stream against the moment you spoke. Drifting petals barely move that; a sky turning to night moves it a lot. |
+| **Cold start** | A new world took **17–25 seconds** to go live, so the loading screen explains that a GPU is waking up. |
+| **Resolution** | The default stream is 2K, upscaled from 832×480. Yume asks for 1080p: the same picture for less bandwidth and decoding on a normal laptop. |
+| **No lip sync from audio** | Orbis can't be driven by a voice track, so Hina is steered into *talking* before her voice starts and back to *listening* just before it ends. |
 
-## Stack
+## The stack
 
-- **Orbis Stable** (via Reactor/`@reactor-team/js-sdk`) — the live video world, connected over WebRTC, steered with `set_prompt`
-- **GPT-OSS 120B on Groq** (`GROQ_API_KEY`) — grades each answer for comprehensibility rather than strict grammar, and narrates the live scene; both calls sit in the live game loop, so Groq's ~500 tok/s inference keeps them fast enough to feel real-time. Falls back to a local keyword-match grader when no key is set, so the game still works offline
-- **Fish Audio** (`FISH_API_KEY`) — narrates the world and reads corrections aloud in a soft, anime-style Japanese voice
-- **Next.js 16 / React 19** — the app shell, forked from Visko's [official starter](https://github.com/Visko-Platform/orbis-online-hackathon-starter)
+| Layer | Tool | Its job in Yume |
+|---|---|---|
+| World | **[Visko Orbis](https://www.reactor.inc/models/visko-orbis-stable)** via Reactor's JS SDK over WebRTC | The live, steerable video world: `set_image` anchors Hina, `set_prompt` steers the running scene |
+| Brain | **GPT-OSS 120B** on **Cerebras** (~3,000 tokens/s) with automatic failover to **Groq** | Grades meaning, narrates the scene word by word, speaks as Hina, drifts the world, writes beginner sentences, choices and fill-the-gaps, and double-checks what the mic heard. Grading measured at a **~0.85s** median on Groq |
+| Voice | **[Fish Audio](https://fish.audio)** | Narrator, Hina, corrections, every word read aloud |
+| Ears | **Web Speech API** (ja-JP) | Always-on microphone; deaf only while Yume's own voice is audible |
+| Magic | **Web Audio API** | The music-box spells, synthesised live, a new melody every time |
+| Art | **[fal](https://fal.ai)**: FLUX1.1 [pro] ultra, GPT Image 2.5, MiniMax Hailuo-02 | Every illustration and animation on the site and in this README (never in the live loop) |
+| App | **Next.js 16 · React 19 · TypeScript** | The site, the game, and API routes that keep every key on the server |
 
-## Setup
+## Run it yourself
 
 ```bash
 npm install
-cp .env.example .env.local
-# then fill in .env.local:
-#   REACTOR_API_KEY   — from reactor.inc (required to actually connect to Orbis)
-#   GROQ_API_KEY      — optional, enables Groq-graded answers + live narration
-#   FISH_API_KEY      — optional, enables spoken narration/feedback
-npm run dev
+cp .env.example .env.local   # then add your keys
+npm run dev                  # http://localhost:3000
 ```
 
-Open <http://localhost:3000>, pick a world, and start talking to it.
+| Key | Needed for |
+|---|---|
+| `REACTOR_API_KEY` | The live Orbis world ([reactor.inc](https://www.reactor.inc)). Required. |
+| `CEREBRAS_API_KEY` and/or `GROQ_API_KEY` | The model. Either works; with both, Cerebras goes first and Groq backs it up. |
+| `FISH_API_KEY` | Spoken Japanese. Optional: without it the game is silent. |
+| `FAL_KEY` | Only the one-off art scripts in `scripts/`. |
+
+**Rehearsal mode.** Open `http://localhost:3000/?rehearse` under `npm run dev` and everything runs (grading, voices, Hina, the ladder, the magic) except Orbis, which is replaced by the world's artwork and the exact prompt it would have been sent. It is free, and it's how most of this was built and tested.
+
+Orbis bills per second of an open session (about $0.58 a minute), and each session is capped at five minutes.
 
 ## Project layout
 
 ```
-data/scenarios.json         The three worlds: base scene prompt + a chain of objectives
-lib/scenarios.ts            Scenario types + the offline keyword-match grader
-lib/levels.ts               The difficulty ladder (single word → full description)
-lib/groq.ts                 Shared Groq (GPT-OSS 120B) JSON-completion client
-lib/vocab.ts                Saved-word list, persisted in localStorage
-components/isekai-game.tsx  The whole game: scenario picker, live turn loop, Orbis steering
-components/narration.tsx    The narrator's line — hoverable/clickable/savable words
-components/vocab-panel.tsx  Your saved-words panel
-app/api/check-answer/       Grades a learner's answer (Groq, or offline fallback)
-app/api/narrate/            Narrates the current scene, pre-segmented into glossable words
-app/api/tts/                Proxies Fish Audio for spoken narration/feedback
-app/api/token/, hooks/…     Unmodified from the Visko starter — token minting + Orbis session
+app/api/            Server routes: grading, narration, Hina, drift, sentences, choices,
+                    fill-the-gaps, speech double-check, Fish Audio proxy, Orbis tokens
+components/         isekai-game.tsx (the game), world-magic.tsx (the spells),
+                    sentence-card, choice-cards, fill-card, narration, vocabulary
+lib/                llm.ts (Cerebras/Groq failover), magic-sound.ts, levels.ts (the ladder),
+                    romaji.ts (on-device matching), scene.ts, companion.ts, vocab.ts
+hooks/              The Orbis session, and the rehearsal stand-in
+data/scenarios.json The scripted worlds and their objectives
+scripts/            One-off art generation (fal) and Orbis checks
+docs/media/         The images in this README
 ```
 
-## Why this fits the challenge
+## Honest limitations
 
-- **Real-time interaction is load-bearing.** There's no version of this app that works with pre-rendered video — the world must react to whatever the learner just said, correctly or not, every single turn.
-- **Creativity.** It reframes "video generation" as a *comprehension check* rather than a content-creation tool, with a full difficulty ladder and a free-form mode for total creative freedom.
-- **Functionality.** The loop is small and legible: hear the world → say something → watch it respond (or not) → try again. A judge can see the whole mechanic in under a minute.
+- This is a one-week prototype. It has not been tested with real learners yet, so it makes no claims about how well anyone learns.
+- Orbis renders some changes far better than others (see above), and small objects, like the cat in the scripted park, often don't appear at all.
+- A world takes about 20 seconds to wake up, and a session ends after five minutes.
+- Speech recognition works best in Chrome and Edge. Everywhere else, typing (romaji is fine) always works.
+- The grader agreed with me on 21 of 22 hand-labelled sentences, including trick answers. That is a sanity check, not a benchmark.
+
+## Credits
+
+Built solo by **Honey Bird** (Ronith Rashmikara) for the [Visko Orbis Online Challenge](https://www.visko.ai/challenge/orbis-september-2026), starting from Visko's [Orbis starter](https://github.com/Visko-Platform/orbis-online-hackathon-starter).
+
+Thank you to [Visko](https://www.visko.ai) and [Reactor](https://www.reactor.inc) for Orbis, [Groq](https://groq.com) and [Cerebras](https://www.cerebras.ai) for fast inference, [Fish Audio](https://fish.audio) for the voice, and [fal](https://fal.ai) for the art.
 
 がんばってください！ 🌸
