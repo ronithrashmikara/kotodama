@@ -2241,9 +2241,10 @@ function ScenarioPicker({
           </video>
         )}
         <div className="isekai-picker-overlay" />
+        <HeroStickers />
         <div className="isekai-picker-content">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="isekai-brandmark" src="/icon.png" alt="" />
+          <img className="isekai-brandmark" src="/art/sakura-sticker.webp" alt="" />
           <span className="eyebrow-jp">ゆめ · a dream shaped by words</span>
           <h1>Yume</h1>
           <Flourish />
@@ -2251,13 +2252,14 @@ function ScenarioPicker({
             <span className="hero-badge-icon">
               <GamepadIcon />
             </span>
-            <span className="hero-badge-text">Learn Japanese — or English — by living in it, not a textbook</span>
+            <span className="hero-badge-text">Let&apos;s play! Pick a world</span>
             <span className="hero-badge-arrow">
               <ArrowRightIcon />
             </span>
           </a>
           <p className="isekai-tagline">
-            Step into a world you actually want to be in — speak Japanese (or English) to it, and it moves.
+            Say it in Japanese (or English) and the world changes: a whale leaps, night falls, a magic door
+            opens. Your words are the magic.
           </p>
           <span className="hero-version">
             <span className="hero-version-dot" />
@@ -2283,6 +2285,7 @@ function ScenarioPicker({
               onClick={() => onPick(s)}
             >
               <span className="scenario-index">{String(i + 1).padStart(2, "0")}</span>
+              <CardSticker id={CARD_STICKERS[s.id]} />
               <span className="scenario-body">
                 <span className="scenario-jp">{s.titleJp}</span>
                 <span className="scenario-en">{s.titleEn}</span>
@@ -2300,6 +2303,7 @@ function ScenarioPicker({
             onClick={() => onPick(buildChoiceScenario())}
           >
             <span className="scenario-index">かな</span>
+            <CardSticker id="stars" />
             <span className="scenario-body">
               <span className="scenario-jp">えらぶ</span>
               <span className="scenario-en">Choose the story</span>
@@ -2313,6 +2317,7 @@ function ScenarioPicker({
           {freeformOpen ? (
             <form
               className="scenario-card scenario-card-freeform-open"
+              style={{ "--card-art": "url(/art/dream-sky.webp)" } as CSSProperties}
               onSubmit={(e) => {
                 e.preventDefault();
                 startFreeform();
@@ -2338,13 +2343,20 @@ function ScenarioPicker({
           ) : (
             <button
               className="scenario-card scenario-card-freeform"
+              style={{ "--card-art": "url(/art/dream-sky.webp)" } as CSSProperties}
               onClick={() => setFreeformOpen(true)}
             >
               <span className="scenario-index">✨</span>
+              <span className="freeform-stickers" aria-hidden="true">
+                {["unicorn", "rocket", "dragon", "sandcastle"].map((id) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={id} src={`/stickers/${id}.webp`} alt="" />
+                ))}
+              </span>
               <span className="scenario-body">
                 <span className="scenario-jp">じゆうな せかい</span>
-                <span className="scenario-en">Create your own world</span>
-                <span className="scenario-steps">Total creative freedom</span>
+                <span className="scenario-en">Make your own world</span>
+                <span className="scenario-steps">A candy castle? A dinosaur beach? Anything!</span>
               </span>
               <span className="scenario-arrow">
                 <ArrowRightIcon />
@@ -2370,8 +2382,8 @@ function ScenarioPicker({
               ひな <em>Walk and talk with Hina</em>
             </span>
             <span className="companion-feature-text">
-              No objectives, no grading — just talk to her in Japanese or English. She answers out
-              loud, and the world changes around you as she does.
+              No tests, no scores: just chat with her in Japanese or English. She talks back out loud,
+              remembers your last adventure, and the world changes around you as she does.
             </span>
             <span className="companion-feature-cta">
               Start walking <ArrowRightIcon />
@@ -2465,6 +2477,44 @@ function LearnChooser({
 
 // Decorative underline beneath the wordmark: a tapered gold rule with a small
 // blossom resting on its right-hand end.
+// A sticker from the sticker book on each world card, so the choice reads at a glance.
+const CARD_STICKERS: Record<string, string> = { park: "cherry-blossom", classroom: "book", "night-city": "lantern" };
+
+function CardSticker({ id }: { id?: string }) {
+  if (!id) return null;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="card-sticker" src={`/stickers/${id}.webp`} alt="" />;
+}
+
+// Stickers drifting around the hero's edges — the same ones you collect.
+const HERO_STICKERS = [
+  { id: "whale", x: 7, y: 20, size: 104, delay: 0 },
+  { id: "rainbow", x: 88, y: 16, size: 96, delay: 0.8 },
+  { id: "dragon", x: 90, y: 66, size: 112, delay: 1.6, wide: true },
+  { id: "moon", x: 9, y: 70, size: 86, delay: 2.2, wide: true },
+  { id: "unicorn", x: 22, y: 44, size: 80, delay: 1.1, wide: true },
+  { id: "balloon", x: 78, y: 40, size: 78, delay: 0.4, wide: true },
+  { id: "stars", x: 30, y: 12, size: 64, delay: 2.8, wide: true },
+  { id: "treasure", x: 82, y: 86, size: 80, delay: 1.9, wide: true },
+];
+
+function HeroStickers() {
+  return (
+    <div className="hero-stickers" aria-hidden="true">
+      {HERO_STICKERS.map((s) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={s.id}
+          className={s.wide ? "wide" : undefined}
+          src={`/stickers/${s.id}.webp`}
+          alt=""
+          style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.size, animationDelay: `${s.delay}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function Flourish() {
   return (
     <svg className="hero-flourish" viewBox="0 0 320 26" fill="none" aria-hidden="true">

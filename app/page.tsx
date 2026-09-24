@@ -10,6 +10,8 @@ export default function Home() {
           whether they show — they're hidden once you enter a world. */}
       <IsekaiGame>
         <VideoSection />
+        <InsideSection />
+        <StickerParade />
         <WhyOrbisSection />
         <TechStackSection />
         <GithubSection />
@@ -35,21 +37,78 @@ function VideoSection() {
     <section className="landing-section">
       <SectionHeader
         eyebrow="Watch it in action"
-        title="See Yume in motion"
-        lede="One minute on what Yume is, how a turn works, and why it had to be built on live, steerable video."
+        title="One minute of real play"
+        lede="A whale that leaps when you tell it to, a quest, a magic door to the sky islands, a dragon, and Hina, who remembers you."
       />
       <div className="video-frame">
         <video
           className="video-player"
-          src="/video/yume-60.mp4"
-          poster="/video/yume-60-poster.jpg"
+          src="/video/yume-kids.mp4"
+          poster="/video/yume-kids-poster.jpg"
           controls
           playsInline
-          // No reason to make people fetch 7MB before they ask for it.
+          // No reason to make people fetch 8MB before they ask for it.
           preload="metadata"
         />
       </div>
-      <p className="video-note">Music, no voiceover — the on-screen text carries it, muted or not.</p>
+      <p className="video-note">
+        Recorded live on Orbis. Music, the Honey Bird and the sky were made with fal; the voice is Yume&apos;s own narrator.
+      </p>
+    </section>
+  );
+}
+
+const INSIDE = [
+  { sticker: "medal", title: "Quests", text: "The world asks for help: the whale is shy! Say the right words and win a gold sticker." },
+  { sticker: "door", title: "A magic door", text: "Say ドアを あける and step into a whole new world: a toy room, a candy town, the moon." },
+  { sticker: "treasure", title: "A sticker book", text: "Everything your words make becomes a sticker, with a photo of the world you made it in." },
+  { sticker: "fireworks", title: "Your dream movie", text: "When the dream ends, it turns into a short film of your best moments, ready to share." },
+  { sticker: "cherry-blossom", title: "Hina remembers", text: "Your friend Hina remembers your adventures: “Last time you made a whale jump!”" },
+  { sticker: "balloon", title: "Play together", text: "Two players, one world: one learns Japanese, one learns English, taking turns." },
+];
+
+function InsideSection() {
+  return (
+    <section className="landing-section">
+      <SectionHeader eyebrow="What's inside" title="A game, not a lesson" />
+      <div className="inside-grid">
+        {INSIDE.map((c) => (
+          <div className="inside-card" key={c.title}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/stickers/${c.sticker}.webp`} alt="" />
+            <h3>{c.title}</h3>
+            <p>{c.text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Two rows drifting opposite ways; each list is doubled so the loop is seamless.
+const PARADE = [
+  ["whale", "dragon", "unicorn", "rainbow", "moon", "cat", "rocket", "dolphin", "fireworks", "owl", "sandcastle", "penguin", "lantern", "dinosaur"],
+  ["cherry-blossom", "boat", "stars", "rabbit", "kite", "lighthouse", "frog", "treasure", "shooting-star", "butterfly", "train", "turtle", "balloon", "key"],
+];
+
+function StickerParade() {
+  return (
+    <section className="landing-section sticker-parade">
+      <SectionHeader
+        eyebrow="Collect them all"
+        title="Every word becomes a sticker"
+        lede="55 to find, and anything new you dream up gets drawn just for you."
+      />
+      {PARADE.map((row, i) => (
+        <div className={`parade-row ${i ? "reverse" : ""}`} key={i} aria-hidden="true">
+          <div className="parade-track">
+            {[...row, ...row].map((id, k) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={k} src={`/stickers/${id}.webp`} alt="" loading="lazy" />
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 }
@@ -57,16 +116,19 @@ function VideoSection() {
 const WHY_CARDS = [
   {
     num: "01",
+    sticker: "whale",
     title: "Correct answers move the world",
     text: "A right sentence steers the live Orbis scene within seconds — the same running world, not a new clip.",
   },
   {
     num: "02",
+    sticker: "cloud",
     title: "Wrong answers change nothing",
     text: "If the meaning doesn't land, the world holds still. The video itself is the feedback.",
   },
   {
     num: "03",
+    sticker: "island",
     title: "State persists, turn after turn",
     text: "Every correct answer builds on the last — a cat, then a dog beside it, then rain — one continuous scene shaped entirely by language.",
   },
@@ -83,6 +145,8 @@ function WhyOrbisSection() {
       <div className="why-grid">
         {WHY_CARDS.map((c) => (
           <div className="why-card" key={c.num}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="why-card-sticker" src={`/stickers/${c.sticker}.webp`} alt="" />
             <span className="why-card-num">{c.num}</span>
             <h3>{c.title}</h3>
             <p>{c.text}</p>
@@ -98,11 +162,11 @@ const TECH_STACK: { name: string; role: string; logo?: string }[] = [
   { name: "Orbis · Reactor", role: "Live, steerable video world over WebRTC", logo: "/logos/reactor.png" },
   {
     name: "GPT-OSS 120B",
-    role: "Grades answers and narrates the scene on Groq, ~500 tok/s, offline fallback",
+    role: "Grades answers, narrates, writes quests and speaks as Hina, on Cerebras and Groq, with a fal backup",
     logo: "/logos/groq.png",
   },
-  { name: "Fish Audio", role: "Narrates the world and speaks each correction aloud", logo: "/logos/fish-audio.png" },
-  { name: "fal.ai", role: "Generated every background, favicon, and mascot on this page", logo: "/logos/fal.png" },
+  { name: "Fish Audio", role: "A Japanese and an English voice for the narrator and Hina", logo: "/logos/fish-audio.png" },
+  { name: "fal.ai", role: "Drew every sticker, background and mascot here, and draws new stickers while you play", logo: "/logos/fal.png" },
 ];
 
 function TechStackSection() {

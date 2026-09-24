@@ -27,7 +27,7 @@ export function BuilderBadge() {
       {open && (
         <div className="builder-popover" role="dialog" aria-label="Who made this">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="builder-popover-avatar" src="/art/honeybird.png" alt="" />
+          <img className="builder-popover-avatar" src="/art/honeybird-sticker.webp" alt="" />
           <span className="builder-popover-eyebrow">Made by</span>
           {/* Hovering the name swaps the handle for the real one. */}
           <span className="builder-popover-name" tabIndex={0}>
@@ -50,7 +50,7 @@ export function BuilderBadge() {
         title="Who made this?"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/art/honeybird.png" alt="" />
+        <img src="/art/honeybird-sticker.webp" alt="" />
       </button>
     </div>
   );

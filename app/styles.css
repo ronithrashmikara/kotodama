@@ -413,17 +413,12 @@ aside code {
 
 .isekai-brandmark {
   display: block;
-  width: 88px;
-  height: 88px;
-  margin: 0 auto 26px;
-  object-fit: cover;
-  background: linear-gradient(155deg, #1e1613, #0d0a09);
-  border: 1.5px solid rgba(232, 191, 106, 0.55);
-  border-radius: 22px;
-  box-shadow:
-    0 18px 44px -12px rgba(0, 0, 0, 0.8),
-    0 0 40px -6px rgba(232, 191, 106, 0.3),
-    0 0 0 7px rgba(8, 6, 6, 0.25);
+  width: 118px;
+  height: 118px;
+  margin: 0 auto 14px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 22px rgba(236, 77, 128, 0.45)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  animation: sticker-wiggle 4.5s ease-in-out infinite;
 }
 
 .eyebrow-jp {
@@ -441,16 +436,17 @@ aside code {
 
 .isekai-picker h1 {
   margin: 10px 0 0;
-  font-family: "Cormorant Garamond", "Zen Maru Gothic", serif;
-  font-size: clamp(3.4rem, 9vw, 6rem);
-  font-weight: 600;
+  font-family: Fredoka, "Zen Maru Gothic", sans-serif;
+  font-size: clamp(3.6rem, 10vw, 6.4rem);
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.005em;
-  background: linear-gradient(170deg, #fffaf0 6%, #f6dda6 42%, #e8bf6a 72%, #d8a55a 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 4px 26px rgba(0, 0, 0, 0.8)) drop-shadow(0 1px 4px rgba(0, 0, 0, 0.9));
+  letter-spacing: 0.01em;
+  color: #fff;
+  -webkit-text-stroke: 3px #b0357e;
+  paint-order: stroke fill;
+  text-shadow:
+    0 6px 0 #7d2b8c,
+    0 12px 34px rgba(60, 10, 60, 0.6);
 }
 
 .hero-flourish {
@@ -2407,41 +2403,37 @@ aside code {
 .builder-fab {
   display: flex;
   align-items: center;
-  height: 52px;
   padding: 0;
-  overflow: hidden;
-  background: linear-gradient(155deg, #221a15, #100c0a);
-  border: 1px solid var(--k-border-strong);
-  border-radius: 999px;
-  box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.6);
-  transition: transform 150ms ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 200ms cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
 .builder-fab:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px) rotate(-6deg) scale(1.08);
 }
 
+/* The Honey Bird, as a sticker: no frame, just the bird and its white edge. */
 .builder-fab img {
-  width: 50px;
-  height: 50px;
+  width: 66px;
+  height: auto;
   flex-shrink: 0;
-  object-fit: cover;
-  border-radius: 50%;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.5));
+  animation: sticker-wiggle 5s ease-in-out infinite;
 }
 
 .builder-popover-avatar {
-  width: 44px;
-  height: 44px;
+  width: 64px;
+  height: auto;
   margin-bottom: 4px;
-  object-fit: cover;
-  border-radius: 50%;
-  border: 1px solid var(--k-border-strong);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
 }
 
 .builder-popover {
   position: absolute;
   right: 0;
-  bottom: 64px;
+  bottom: 84px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -4443,5 +4435,393 @@ body.in-world {
   .quest-banner,
   .duet-turn {
     animation: none;
+  }
+}
+
+
+/* ---- The kid-friendly home ----------------------------------------------------
+   Stickers from the sticker book drift around the hero and sit on the world
+   cards; buttons are candy-coloured and headings rounded. The game screens
+   keep their own look. */
+
+@keyframes sticker-wiggle {
+  0%, 100% { transform: rotate(-4deg) translateY(0); }
+  50% { transform: rotate(4deg) translateY(-6px); }
+}
+
+@keyframes sticker-float {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-6deg); }
+  50% { transform: translate(-50%, calc(-50% - 12px)) rotate(6deg); }
+}
+
+.hero-stickers {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.hero-stickers img {
+  position: absolute;
+  height: auto;
+  filter: drop-shadow(0 8px 14px rgba(40, 10, 40, 0.45));
+  animation: sticker-float 5.5s ease-in-out infinite;
+}
+
+.isekai-picker-content {
+  z-index: 3;
+}
+
+.hero-badge {
+  gap: 12px;
+  padding: 14px 24px 14px 18px;
+  color: #fff;
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: linear-gradient(135deg, #ff6fa8, #c65bff);
+  border: 3px solid #fff;
+  box-shadow:
+    0 6px 0 #8f2f8a,
+    0 18px 34px -10px rgba(198, 91, 255, 0.7);
+}
+
+.hero-badge:hover {
+  background: linear-gradient(135deg, #ff85b6, #d177ff);
+  border-color: #fff;
+  transform: translateY(-3px);
+}
+
+.hero-badge-icon {
+  color: #fff;
+  border-right-color: rgba(255, 255, 255, 0.45);
+}
+
+.hero-badge-arrow,
+.hero-badge:hover .hero-badge-arrow {
+  color: #fff;
+}
+
+.hero-badge-text {
+  text-shadow: none;
+}
+
+.isekai-tagline {
+  font-weight: 500;
+}
+
+.section-title {
+  font-family: Fredoka, "Zen Maru Gothic", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.section-eyebrow {
+  color: #ff9ecb;
+}
+
+/* A sticker peeled onto each world card. */
+.card-sticker {
+  position: absolute;
+  top: 12px;
+  right: 58px;
+  z-index: 3;
+  width: 64px;
+  height: auto;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5));
+  transform: rotate(8deg);
+  transition: transform 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.scenario-card:hover .card-sticker,
+.scenario-card:focus-visible .card-sticker {
+  transform: rotate(-6deg) scale(1.15);
+}
+
+/* "Make your own world" spans the whole row, on fal's pastel dream sky. */
+.scenario-card-freeform,
+.scenario-card-freeform-open {
+  grid-column: 1 / -1;
+  min-height: 210px;
+  background: #f7cfe4;
+  border: 3px solid #fff;
+}
+
+.scenario-card-freeform::before,
+.scenario-card-freeform-open::before {
+  content: "";
+}
+
+.scenario-card-freeform::after,
+.scenario-card-freeform-open::after {
+  content: "";
+  background: linear-gradient(90deg, rgba(90, 30, 90, 0.72) 0%, rgba(90, 30, 90, 0.35) 45%, rgba(90, 30, 90, 0) 70%);
+}
+
+.scenario-card-freeform .scenario-jp,
+.scenario-card-freeform-open .scenario-jp {
+  color: #fff;
+  font-size: 1.7rem;
+  text-shadow: 0 3px 12px rgba(80, 20, 80, 0.7);
+}
+
+.scenario-card-freeform .scenario-en,
+.scenario-card-freeform-open .scenario-en {
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.scenario-card-freeform .scenario-steps {
+  color: #fff3b0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.9rem;
+}
+
+.scenario-card-freeform:hover,
+.scenario-card-freeform:focus-visible {
+  border-style: solid;
+  border-color: #fff;
+  box-shadow: 0 20px 46px -14px rgba(255, 111, 168, 0.55);
+}
+
+.scenario-card-freeform-open .scenario-body {
+  max-width: 520px;
+}
+
+.freeform-stickers {
+  position: absolute;
+  top: 50%;
+  right: 5%;
+  display: flex;
+  gap: 4px;
+  transform: translateY(-50%);
+}
+
+.freeform-stickers img {
+  width: clamp(56px, 9vw, 110px);
+  height: auto;
+  filter: drop-shadow(0 8px 12px rgba(80, 20, 80, 0.4));
+  animation: sticker-wiggle 4s ease-in-out infinite;
+}
+
+.freeform-stickers img:nth-child(2) { animation-delay: 0.6s; }
+.freeform-stickers img:nth-child(3) { animation-delay: 1.2s; }
+.freeform-stickers img:nth-child(4) { animation-delay: 1.8s; }
+
+.album-open {
+  font-family: Fredoka, Inter, sans-serif;
+}
+
+@media (max-width: 800px) {
+  .hero-stickers img.wide {
+    display: none;
+  }
+
+  .hero-stickers img {
+    width: 64px !important;
+  }
+
+  .isekai-brandmark {
+    width: 92px;
+    height: 92px;
+  }
+
+  .hero-badge {
+    font-size: 1rem;
+  }
+
+  .freeform-stickers {
+    top: 12px;
+    right: 64px;
+    transform: none;
+  }
+
+  .freeform-stickers img:nth-child(n + 3) {
+    display: none;
+  }
+
+  .scenario-card-freeform::after,
+  .scenario-card-freeform-open::after {
+    background: linear-gradient(180deg, rgba(90, 30, 90, 0) 20%, rgba(90, 30, 90, 0.8) 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .isekai-brandmark,
+  .hero-stickers img,
+  .freeform-stickers img {
+    animation: none;
+  }
+}
+
+.inside-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.inside-card {
+  position: relative;
+  padding: 22px 22px 22px 112px;
+  min-height: 118px;
+  background: linear-gradient(150deg, rgba(255, 158, 203, 0.1), rgba(198, 91, 255, 0.06));
+  border: 1px solid rgba(255, 158, 203, 0.22);
+  border-radius: var(--k-radius-lg);
+  transition: transform 220ms ease, border-color 220ms ease;
+}
+
+.inside-card:hover {
+  border-color: rgba(255, 158, 203, 0.55);
+  transform: translateY(-4px);
+}
+
+.inside-card img {
+  position: absolute;
+  top: 50%;
+  left: 18px;
+  width: 80px;
+  height: auto;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+  transform: translateY(-50%) rotate(-6deg);
+  transition: transform 260ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.inside-card:hover img {
+  transform: translateY(-50%) rotate(6deg) scale(1.1);
+}
+
+.inside-card h3 {
+  margin: 0;
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.inside-card p {
+  margin: 6px 0 0;
+  color: var(--k-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+@keyframes parade {
+  to { transform: translateX(-50%); }
+}
+
+.parade-row {
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.parade-row + .parade-row {
+  margin-top: 6px;
+}
+
+.parade-track {
+  display: flex;
+  gap: 18px;
+  width: max-content;
+  padding: 10px 0;
+  animation: parade 60s linear infinite;
+}
+
+.parade-row.reverse .parade-track {
+  animation-direction: reverse;
+  animation-duration: 70s;
+}
+
+.parade-track img {
+  width: 92px;
+  height: auto;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+}
+
+.parade-track img:nth-child(odd) {
+  transform: rotate(-7deg);
+}
+
+.parade-track img:nth-child(even) {
+  transform: rotate(6deg) translateY(6px);
+}
+
+@media (max-width: 640px) {
+  .parade-track img {
+    width: 68px;
+  }
+
+  .inside-card {
+    padding-left: 100px;
+  }
+
+  .inside-card img {
+    width: 68px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parade-track {
+    animation: none;
+  }
+}
+
+.why-card {
+  position: relative;
+}
+
+.why-card-sticker {
+  position: absolute;
+  top: -18px;
+  right: 14px;
+  width: 58px;
+  height: auto;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+  transform: rotate(8deg);
+}
+
+/* The open "describe any world" form: clear of the ✨ badge, and readable on
+   the pastel sky. */
+.scenario-card-freeform-open {
+  padding-top: 58px;
+}
+
+.scenario-card-freeform-open .freeform-input {
+  color: #4a2350;
+  font-size: 1rem;
+  background: rgba(255, 255, 255, 0.94);
+  border: 2px solid #fff;
+}
+
+.scenario-card-freeform-open .freeform-input::placeholder {
+  color: #9b6aa8;
+}
+
+.scenario-card-freeform-open .freeform-input:focus {
+  border-color: #ff6fa8;
+}
+
+.scenario-card-freeform-open .freeform-submit {
+  margin-top: 10px;
+  color: #fff;
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 1rem;
+  background: linear-gradient(135deg, #ff6fa8, #c65bff);
+  border: 2px solid #fff;
+  border-radius: 999px;
+}
+
+/* On a phone the Honey Bird is smaller, so it covers less of what you read. */
+@media (max-width: 640px) {
+  .builder-fab img {
+    width: 54px;
+  }
+
+  .builder-popover {
+    bottom: 66px;
   }
 }
