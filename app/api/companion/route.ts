@@ -10,11 +10,16 @@ export const runtime = "nodejs";
 type Turn = { role: "you" | "companion"; text: string };
 
 type CompanionRequest = {
-  said: string;
+  said?: string;
   scene: string;
   level?: number;
   history?: Turn[];
+  /** The player has just arrived and said nothing yet — Hina speaks first. */
+  greeting?: boolean;
 };
+
+const GREETING =
+  "(The player has just arrived beside you and has not said anything yet. Greet them warmly in one short line and point out one thing you can both see, so they have something to answer.)";
 
 export type CompanionReply = {
   reply: string;
@@ -31,7 +36,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const said = body.said?.trim();
+  const said = body.greeting ? GREETING : body.said?.trim();
   if (!said) return NextResponse.json({ error: "said is required" }, { status: 400 });
 
   const apiKey = process.env.GROQ_API_KEY;

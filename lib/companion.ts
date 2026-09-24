@@ -24,6 +24,25 @@ export function withCompanion(scene: string): string {
   return `${scene} ${COMPANION_LOOK} is present in the scene.`;
 }
 
+// Orbis cannot be driven by an audio track, so there is no true lip sync to
+// be had from a live stream. What it can do is animate what a prompt
+// describes — so while her voice plays, the prompt says she is talking, and
+// when it ends, that she is listening.
+//
+// Both follow the Orbis prompt guide: one clear physical action, and nothing
+// about the world restated (restating reads to the model as a rebuild). A new
+// prompt takes a chunk (~1.8s) to start and 2-4s to land, which is why the
+// talking prompt goes out before her audio has even been generated.
+export const COMPANION_TALKING =
+  "Hina turns toward the camera and talks, her lips and jaw moving as she speaks, small natural head movements.";
+export const COMPANION_LISTENING =
+  "Hina stops talking and listens quietly, lips closed, with a soft smile.";
+
+/** A scene change that happens while she is mid-sentence. */
+export function whileCompanionTalks(change: string): string {
+  return `${change.replace(/\.$/, "")}, while Hina keeps talking, her lips moving as she speaks.`;
+}
+
 /**
  * The world you share with her. Its basePrompt deliberately matches the
  * reference frame, so the first rendered moment and the conditioning image

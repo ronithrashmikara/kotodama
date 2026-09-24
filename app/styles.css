@@ -684,22 +684,6 @@ aside code {
     border-color 200ms ease;
 }
 
-.isekai-play {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
-  gap: 22px;
-  align-items: start;
-}
-
-.isekai-video {
-  position: relative;
-}
-
-.isekai-video .player {
-  border: 1px solid var(--k-border-strong);
-  box-shadow: var(--k-shadow-panel);
-}
-
 .isekai-loading {
   position: absolute;
   inset: 0;
@@ -737,18 +721,6 @@ aside code {
   to {
     transform: rotate(360deg);
   }
-}
-
-.isekai-hud {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px;
-  background: var(--k-panel);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--k-border);
-  border-radius: var(--k-radius-lg);
-  box-shadow: var(--k-shadow-panel);
 }
 
 .isekai-topline {
@@ -845,7 +817,7 @@ aside code {
   gap: 6px;
 }
 
-.isekai-progress .step {
+.isekai-progress-steps .step {
   display: grid;
   place-items: center;
   width: 24px;
@@ -859,14 +831,14 @@ aside code {
   transition: all 180ms ease;
 }
 
-.isekai-progress .step.active {
+.isekai-progress-steps .step.active {
   color: #fff;
   background: linear-gradient(135deg, var(--k-sakura), #f2668f);
   border-color: transparent;
   box-shadow: 0 0 0 4px rgba(236, 77, 128, 0.2);
 }
 
-.isekai-progress .step.done {
+.isekai-progress-steps .step.done {
   color: #1a1410;
   background: var(--k-gold);
   border-color: transparent;
@@ -2512,15 +2484,6 @@ html {
 }
 
 @media (max-width: 900px) {
-  .isekai-play {
-    grid-template-columns: 1fr;
-  }
-
-  .isekai-topline {
-    grid-template-columns: auto auto;
-    justify-content: space-between;
-  }
-
   .isekai-title {
     display: none;
   }
@@ -2637,14 +2600,15 @@ html {
 }
 
 /* ---- Beginner rungs -------------------------------------------------------
-   Rung 0 (Echo) and rung 2 (Fill). Both are deliberately large and quiet: the
-   player's attention should be on one word or one sentence, not on chrome. */
+   Rung 0 (Build a sentence), rung 1 (Choose) and rung 2 (Fill). Quiet and
+   focused: attention belongs on one word, then one sentence — and on the
+   world behind them. */
 
-.echo-card {
+.sentence-card {
   display: grid;
   justify-items: center;
-  gap: 6px;
-  padding: 30px 28px 24px;
+  gap: 2px;
+  padding: 15px 20px 13px;
   text-align: center;
   background: var(--k-panel);
   border: 1px solid var(--k-border-strong);
@@ -2653,99 +2617,317 @@ html {
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
-.echo-card.echo-ok {
+.sentence-card.sentence-ok {
   border-color: rgba(111, 220, 154, 0.55);
   box-shadow: 0 0 0 1px rgba(111, 220, 154, 0.2), var(--k-shadow-panel);
 }
 
-.echo-card.echo-retry {
+.sentence-card.sentence-retry {
   border-color: rgba(255, 177, 92, 0.45);
 }
 
-.echo-label {
-  font-size: 0.72rem;
+.sentence-card.is-transforming {
+  border-color: rgba(232, 191, 106, 0.6);
+  box-shadow: 0 0 44px rgba(232, 191, 106, 0.28), var(--k-shadow-panel);
+}
+
+.sentence-label {
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--k-gold);
 }
 
-.echo-kana {
+/* The whole sentence, always visible: words light up as they are learned. */
+.sentence-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 4px 3px;
   margin-top: 6px;
-  font-size: clamp(3rem, 9vw, 4.4rem);
-  line-height: 1.1;
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.sentence-word {
+  padding: 1px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: color 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+}
+
+.sentence-word.ahead {
+  color: var(--k-text-faint);
+  border-style: dashed;
+  border-color: rgba(255, 246, 235, 0.16);
+}
+
+.sentence-word.current {
+  color: #fff;
+  background: rgba(236, 77, 128, 0.2);
+  border-color: rgba(236, 77, 128, 0.65);
+  box-shadow: 0 0 0 3px rgba(236, 77, 128, 0.12);
+}
+
+.sentence-word.learned {
+  color: var(--k-success);
+  background: rgba(111, 220, 154, 0.1);
+  border-color: rgba(111, 220, 154, 0.35);
+}
+
+.is-whole .sentence-word.learned {
+  color: #fff;
+  background: rgba(232, 191, 106, 0.16);
+  border-color: rgba(232, 191, 106, 0.55);
+}
+
+.is-transforming .sentence-word {
+  animation: word-glow 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes word-glow {
+  to {
+    box-shadow: 0 0 20px rgba(232, 191, 106, 0.6);
+  }
+}
+
+.sentence-particle {
+  color: var(--k-text-muted);
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.sentence-en {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--k-text-muted);
+}
+
+.sentence-target {
+  margin-top: 6px;
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: clamp(1.9rem, 4.5vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1.15;
   color: var(--k-text);
 }
 
+.is-whole .sentence-target {
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+}
+
 /* A scaffold with an expiry date — rungs 0-1 only. See lib/levels.ts. */
-.echo-romaji {
-  font-size: 1.15rem;
+.sentence-romaji {
+  font-size: 1.05rem;
   letter-spacing: 0.06em;
   color: var(--k-sakura-soft);
 }
 
-.echo-english {
-  font-size: 1rem;
+.sentence-gloss {
+  font-size: 0.95rem;
   color: var(--k-text-muted);
 }
 
-.echo-replay {
+.sentence-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sentence-actions .isekai-mic {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+}
+
+.sentence-replay {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-top: 14px;
   padding: 7px 15px;
-  font: inherit;
   font-size: 0.85rem;
   color: var(--k-text);
   background: rgba(255, 246, 235, 0.06);
   border: 1px solid var(--k-border-strong);
   border-radius: 999px;
-  cursor: pointer;
   transition: background 0.18s ease;
 }
 
-.echo-replay:hover:not(:disabled) {
+.sentence-replay:hover:not(:disabled) {
   background: rgba(255, 246, 235, 0.12);
 }
 
-.echo-replay:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.echo-status {
-  min-height: 26px;
-  margin-top: 14px;
+.sentence-status {
+  min-height: 22px;
+  margin-top: 5px;
   font-size: 0.9rem;
 }
 
-.echo-ok {
+.sentence-ok {
   color: var(--k-success);
   font-weight: 600;
 }
 
-.echo-retry {
+.sentence-retry {
   color: var(--k-warn);
 }
 
-.echo-heard {
+.sentence-heard {
   color: var(--k-text-muted);
 }
 
-.echo-listening {
+.sentence-listening {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   color: var(--k-text-faint);
 }
 
-.echo-dot {
+.sentence-dot {
   width: 8px;
   height: 8px;
   background: var(--k-sakura);
   border-radius: 50%;
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+.sentence-type {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+  margin-top: 5px;
+}
+
+.sentence-type input {
+  flex: 1;
+  padding: 7px 13px;
+  font-size: 0.82rem;
+  color: var(--k-text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--k-border);
+  border-radius: 999px;
+}
+
+.sentence-type input::placeholder {
+  color: var(--k-text-faint);
+}
+
+.sentence-type input:focus {
+  outline: none;
+  border-color: rgba(236, 77, 128, 0.45);
+}
+
+.sentence-type button {
+  padding: 6px 15px;
+  font-size: 0.8rem;
+  color: var(--k-text);
+  background: rgba(255, 246, 235, 0.06);
+  border: 1px solid var(--k-border-strong);
+  border-radius: 999px;
+}
+
+/* Rung 1: two kana-only options. The English arrives only after a dwell. */
+.choices {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  text-align: center;
+  background: var(--k-panel);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-lg);
+  box-shadow: var(--k-shadow-panel);
+}
+
+.choices-label {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--k-gold);
+}
+
+.choices-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.choice {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-height: 96px;
+  padding: 16px 14px 18px;
+  overflow: hidden;
+  color: var(--k-text);
+  background: rgba(255, 246, 235, 0.04);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-md);
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.choice:hover:not(:disabled) {
+  background: rgba(236, 77, 128, 0.1);
+  border-color: rgba(236, 77, 128, 0.5);
+  transform: translateY(-2px);
+}
+
+.choice-kana {
+  font-family: "Noto Sans JP", sans-serif;
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.choice-reveal {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: var(--k-sakura-soft);
+}
+
+.choice-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.choice-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--k-sakura);
+  transform-origin: left;
+}
+
+.choice-speak {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--k-text-muted);
+  border-radius: 50%;
+}
+
+.choice-speak:hover {
+  color: var(--k-text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.choices-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--k-text-faint);
 }
 
 .fill-card {
@@ -2858,4 +3040,503 @@ html {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- */
+/* The world, full screen                                            */
+/* The world is the screen, not a picture on it: the stream fills    */
+/* the viewport edge to edge and everything else floats over it.     */
+/* ---------------------------------------------------------------- */
+
+body.in-world {
+  overflow: hidden;
+}
+
+.isekai-play {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  background: #000;
+}
+
+.world-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.world-stage .player {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+
+.world-stage .status {
+  display: none;
+}
+
+.world-stage .isekai-loading {
+  z-index: 2;
+  font-size: 1.1rem;
+  border-radius: 0;
+}
+
+/* Just enough darkness at the edges to read what floats there, and none in
+   the middle where the world is. */
+.world-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(5, 3, 4, 0.7) 0%, rgba(5, 3, 4, 0) 15%),
+    linear-gradient(0deg, rgba(5, 3, 4, 0.78) 0%, rgba(5, 3, 4, 0.3) 30%, rgba(5, 3, 4, 0) 50%);
+}
+
+.world-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* The starter styles every <header> as a 900px page heading. */
+  max-width: none;
+  margin: 0;
+  padding: 16px 20px;
+}
+
+.world-top .isekai-title {
+  align-items: flex-start;
+  margin-right: auto;
+  text-align: left;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+}
+
+.world-top .isekai-title em {
+  color: rgba(255, 246, 235, 0.78);
+}
+
+.world-top-right {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Everything on the top bar sits on the moving picture, so it brings its
+   own glass. */
+.world-top .isekai-leave,
+.world-top .session-meter,
+.world-top .isekai-live,
+.world-top .world-toggle,
+.world-chip {
+  background: rgba(10, 8, 9, 0.55);
+  backdrop-filter: blur(10px);
+  border-color: rgba(255, 246, 235, 0.14);
+}
+
+.world-top .session-meter {
+  min-width: 140px;
+}
+
+.world-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  color: var(--k-text);
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid rgba(255, 246, 235, 0.14);
+  border-radius: 999px;
+}
+
+.world-chip:hover {
+  background: rgba(34, 27, 29, 0.75);
+}
+
+.world-chip.on {
+  color: var(--k-gold);
+  border-color: rgba(232, 191, 106, 0.55);
+}
+
+.world-chip-level {
+  color: var(--k-sakura-soft);
+  font-family: "Noto Sans JP", sans-serif;
+  font-weight: 700;
+}
+
+.world-chip-label {
+  color: var(--k-text-muted);
+}
+
+.world-chip-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--k-gold);
+}
+
+.world-toast {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  z-index: 3;
+  width: min(520px, calc(100% - 32px));
+  background: rgba(18, 13, 22, 0.72);
+  backdrop-filter: blur(12px);
+  transform: translateX(-50%);
+  animation: toast-in 420ms ease both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.world-bottom {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(720px, calc(100% - 32px));
+  max-height: calc(100% - 150px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  transform: translateX(-50%);
+  transition: left 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* With the side panel open on a wide screen, the cards make room for it
+   instead of disappearing under it. */
+@media (min-width: 1180px) {
+  .isekai-play.panel-open .world-bottom {
+    left: calc((100% - 400px) / 2);
+  }
+}
+
+.world-bottom .subtitle {
+  position: static;
+  padding: 0 10px;
+  background: none;
+  border-radius: 0;
+}
+
+.world-bottom .subtitle-jp {
+  font-size: clamp(1.1rem, 2vw, 1.55rem);
+}
+
+/* Cards float on the world as glass. */
+.world-bottom .sentence-card,
+.world-bottom .choices,
+.world-bottom .fill-card,
+.world-bottom .isekai-objective,
+.world-bottom .companion-line,
+.world-waiting {
+  background: rgba(12, 9, 10, 0.62);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border-color: rgba(255, 246, 235, 0.14);
+  box-shadow: 0 22px 50px -22px rgba(0, 0, 0, 0.75);
+}
+
+.world-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--k-text-muted);
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 246, 235, 0.14);
+  border-radius: var(--k-radius-lg);
+}
+
+.world-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.world-answer .isekai-input,
+.world-answer .isekai-mic {
+  background: rgba(12, 9, 10, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.objective-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Hina's line reads like a dialogue box: portrait, name, words. */
+.world-bottom .companion-line {
+  grid-template-columns: 58px 1fr;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 246, 235, 0.14);
+  border-radius: var(--k-radius-lg);
+}
+
+.world-bottom .companion-avatar {
+  width: 58px;
+  height: 58px;
+}
+
+.world-bottom .companion-speech .narration {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+/* The side panel: level, the narrator's words, vocabulary. It slides over
+   the world's edge rather than shrinking the world. */
+.world-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(400px, 100%);
+  padding: 18px 18px 24px;
+  overflow-y: auto;
+  visibility: hidden;
+  background: rgba(12, 9, 10, 0.88);
+  backdrop-filter: blur(18px);
+  border-left: 1px solid var(--k-border);
+  transform: translateX(100%);
+  transition:
+    transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 320ms;
+}
+
+.isekai-play.panel-open .world-panel {
+  visibility: visible;
+  transform: none;
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.world-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--k-gold);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.world-panel-close {
+  padding: 0 6px;
+  color: var(--k-text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  background: none;
+  border: 0;
+}
+
+.world-panel-close:hover {
+  color: var(--k-text);
+}
+
+.world-panel .level-picker {
+  border-radius: var(--k-radius-md);
+}
+
+.world-panel .level-note {
+  margin-top: -6px;
+}
+
+/* Complete, or the session ran out: a card over the still-running world. */
+.world-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+  background: rgba(6, 4, 5, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.world-modal .isekai-complete,
+.world-ended {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: 28px 24px 22px;
+  overflow-y: auto;
+  background: rgba(14, 10, 11, 0.9);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-lg);
+  box-shadow: var(--k-shadow-panel);
+}
+
+.world-ended {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.world-ended h2 {
+  margin: 0;
+  color: #ffd9e6;
+  font-family: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+  font-size: 1.4rem;
+}
+
+.world-ended p {
+  max-width: 360px;
+  margin: 8px 0 20px;
+  color: var(--k-text-muted);
+  font-size: 0.92rem;
+}
+
+.world-ended-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* Rehearsal (development only): the world's artwork stands in for the
+   stream, with the prompt Orbis would have received pinned above it. */
+.rehearsal-world {
+  background: #0b0909;
+}
+
+.rehearsal-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: rehearsal-drift 40s ease-in-out infinite alternate;
+}
+
+@keyframes rehearsal-drift {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(1.1) translate(-1%, -1%);
+  }
+}
+
+.rehearsal-prompt {
+  position: absolute;
+  top: 76px;
+  left: 20px;
+  z-index: 2;
+  max-width: min(440px, calc(100% - 40px));
+  padding: 10px 12px;
+  color: #ece5d9;
+  font:
+    500 0.72rem/1.45 ui-monospace,
+    monospace;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px dashed rgba(232, 191, 106, 0.5);
+  border-radius: 10px;
+}
+
+.rehearsal-prompt span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--k-gold);
+  font: 700 0.6rem Inter, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Portrait phones: a 16:9 world cropped to fill a tall screen would lose most
+   of the picture, so there the world sits at the top at its own shape and the
+   cards follow beneath it. */
+@media (max-width: 700px), (max-aspect-ratio: 1/1) {
+  .isekai-play {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .world-top {
+    position: sticky;
+    order: -1;
+    padding: 10px 12px;
+    background: rgba(8, 6, 6, 0.94);
+  }
+
+  .world-top-right {
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .world-top-right > * {
+    flex-shrink: 0;
+  }
+
+  .world-chip-label,
+  .world-top .session-meter-bar,
+  .world-top .isekai-live {
+    display: none;
+  }
+
+  .world-top .session-meter {
+    min-width: 0;
+  }
+
+  .world-stage {
+    position: relative;
+    inset: auto;
+    flex-shrink: 0;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
+
+  .world-scrim {
+    display: none;
+  }
+
+  .world-toast {
+    top: 62px;
+  }
+
+  .world-bottom,
+  .isekai-play.panel-open .world-bottom {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    max-height: none;
+    margin: 14px 16px 28px;
+    overflow: visible;
+    transform: none;
+  }
+
+  .world-modal,
+  .world-panel {
+    position: fixed;
+  }
 }

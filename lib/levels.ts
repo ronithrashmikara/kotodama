@@ -14,7 +14,7 @@
 // meaning they do not have.
 
 /** What the player has to produce this turn. */
-export type LevelMode = "echo" | "choose" | "fill" | "free";
+export type LevelMode = "sentence" | "choose" | "fill" | "free";
 
 /** How much English rides along with the Japanese. */
 export type LevelSupport = "all" | "new" | "words" | "none";
@@ -39,15 +39,15 @@ export type Level = {
 export const LEVELS: Level[] = [
   {
     id: 0,
-    nameJp: "まねる",
-    nameEn: "Echo",
-    blurb: "Hear one word and say it back. No reading needed.",
+    nameJp: "つなぐ",
+    nameEn: "Build a sentence",
+    blurb: "Learn a sentence one word at a time, then say it whole and the world transforms.",
     narrationBrief:
       "ONE very short sentence of 3-6 words, JLPT N5, hiragana and katakana only, no kanji at all.",
     answerBrief:
-      "The learner is repeating a single word they were just shown. Accept any recognisable attempt at that word. Pronunciation, particles and grammar are irrelevant here.",
+      "The learner is repeating a short sentence they were just taught word by word. Accept any recognisable attempt. Pronunciation, particles and grammar are irrelevant here.",
     inputHint: "いってみて…",
-    mode: "echo",
+    mode: "sentence",
     romaji: true,
     support: "all",
   },

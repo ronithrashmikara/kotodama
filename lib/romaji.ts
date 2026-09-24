@@ -1,10 +1,11 @@
 // Kana → romaji, and a deliberately forgiving comparison used to grade the
-// Echo rung (say one word back).
+// first rung (learn a sentence word by word, then say it whole).
 //
-// Echo grading runs entirely on the client. It is a pronunciation attempt, not
-// a composition, so sending it to an LLM would add a second of latency to the
-// single most important moment in a beginner's session — the first time they
-// speak Japanese and the world answers. That moment has to feel instant.
+// That grading runs entirely on the client. Repeating a taught word is a
+// pronunciation attempt, not a composition, so sending it to an LLM would add a
+// second of latency to the single most important moment in a beginner's
+// session — the first time they speak Japanese and the world answers. That
+// moment has to feel instant.
 
 const KANA: Array<[string, string]> = [
   // Digraphs first: き + ゃ must beat き on its own.
@@ -146,4 +147,64 @@ export function matchesEcho(
   // 0.6 is generous on purpose: two-mora words are short, so one wrong sound
   // is already a third of the word.
   return { ok: score >= 0.6, score };
+}
+
+export type SpokenWord = { kana: string; romaji?: string; accept?: string[] };
+
+/** Width-folded, katakana as hiragana, spaces and punctuation gone. */
+function compact(s: string): string {
+  return toHiragana(s.normalize("NFKC").toLowerCase().replace(/[\s、。，．！？!?,.・「」『』ー]/g, ""));
+}
+
+/**
+ * Every shape a word can come back in from ja-JP recognition. Verbs are the
+ * hard part: ふる is taught, but the recogniser may hand back 降ります — so a
+ * kanji spelling also counts by its stem (降), and a kana spelling of three or
+ * more by everything but its last kana (のぼる → のぼ, which still finds
+ * のぼります). Loose on purpose: a beginner's sentence is not the place to be
+ * strict.
+ */
+function spokenForms(word: SpokenWord): string[] {
+  const forms = new Set<string>();
+  for (const raw of [word.kana, ...(word.accept ?? [])]) {
+    const form = compact(raw);
+    if (!form) continue;
+    forms.add(form);
+    const stem = form.match(/^.*[一-龯㐀-䶿]/)?.[0];
+    if (stem) forms.add(stem);
+    else if (form.length >= 3) forms.add(form.slice(0, -1));
+  }
+  return [...forms];
+}
+
+/**
+ * Did the learner say this sentence? Each taught word is looked for anywhere in
+ * what was heard, in any script. Particles are ignored — dropping が is not
+ * what stops a beginner being understood — and once a sentence has three words,
+ * one missed word is forgiven too.
+ */
+export function matchesSentence(
+  said: string,
+  words: SpokenWord[],
+): { ok: boolean; found: boolean[] } {
+  const heard = compact(said);
+  if (!heard || !words.length) return { ok: false, found: words.map(() => false) };
+
+  const heardRomaji = fold(HAS_KANA.test(heard) ? toRomaji(heard) : heard);
+  const found = words.map((word) => {
+    if (spokenForms(word).some((form) => heard.includes(form))) return true;
+    const romaji = fold(word.romaji || toRomaji(word.kana));
+    return romaji.length >= 2 && heardRomaji.includes(romaji);
+  });
+
+  const hits = found.filter(Boolean).length;
+  return { ok: hits === words.length || (words.length >= 3 && hits === words.length - 1), found };
+}
+
+/** One word, said on its own — or inside a longer phrase the recogniser padded it with. */
+export function matchesWord(said: string, word: SpokenWord): boolean {
+  return (
+    matchesEcho(said, word.kana, word.romaji, word.accept).ok ||
+    matchesSentence(said, [word]).ok
+  );
 }

@@ -8,7 +8,8 @@ import { Narration } from "@/components/narration";
 import { OrbisPlayer } from "@/components/orbis-player";
 import { VocabPanel } from "@/components/vocab-panel";
 import { VocabReview } from "@/components/vocab-review";
-import { useOrbisSession, type OrbisSession } from "@/hooks/use-orbis-session";
+import { useOrbisSession } from "@/hooks/use-orbis-session";
+import { useRehearsalFlag, useRehearsalSession, type WorldSession } from "@/hooks/use-rehearsal-session";
 import {
   FIRST_FREE_LEVEL_ID,
   getLevel,
@@ -26,18 +27,20 @@ import {
   type Scenario,
 } from "@/lib/scenarios";
 import { ChoiceCards } from "@/components/choice-cards";
-import { EchoCard } from "@/components/echo-card";
 import { FillCard } from "@/components/fill-card";
+import { SentenceCard, type SentenceState } from "@/components/sentence-card";
 import type { Choice } from "@/app/api/choices/route";
-import type { EchoWord } from "@/app/api/word/route";
 import type { FillFrame, FillOption } from "@/app/api/fill/route";
-import { matchesEcho } from "@/lib/romaji";
+import type { SentenceChallenge } from "@/app/api/sentence/route";
+import { matchesSentence, matchesWord } from "@/lib/romaji";
 import { addEvent, composeScene, type SceneEvent } from "@/lib/scene";
 import {
   buildCompanionScenario,
   COMPANION_IMAGE,
+  COMPANION_LISTENING,
   COMPANION_NAME,
-  withCompanion,
+  COMPANION_TALKING,
+  whileCompanionTalks,
 } from "@/lib/companion";
 import type { CompanionReply } from "@/app/api/companion/route";
 import { loadVocab, removeWord, saveWord, type VocabEntry } from "@/lib/vocab";
@@ -87,6 +90,18 @@ export function IsekaiGame({ children }: { children?: ReactNode }) {
 
 type Phase = "pick" | "connecting" | "starting" | "playing" | "complete";
 
+/** Orbis turns a prompt into picture over 2-4s; the ambient world waits that out and more. */
+const DRIFT_QUIET_MS = 8_000;
+/** How long a transformed world is left to land, and be looked at, before the next sentence. */
+const AFTER_TRANSFORM_MS = 5_000;
+/** Back-off before asking again when a card could not be fetched. */
+const RETRY_MS = 4_000;
+/**
+ * "Stop talking" is sent this long before her last line ends: a prompt needs a
+ * chunk (~1.8s) to reach the picture, so sending it at the end lands it late.
+ */
+const ENDING_LEAD_S = 1.5;
+
 function IsekaiSession({
   clearJwt,
   getCurrentJwt,
@@ -96,7 +111,10 @@ function IsekaiSession({
   getCurrentJwt: () => string | null;
   children?: ReactNode;
 }) {
-  const session = useOrbisSession(clearJwt, getCurrentJwt);
+  const live = useOrbisSession(clearJwt, getCurrentJwt);
+  const rehearsal = useRehearsalSession();
+  const rehearsing = useRehearsalFlag();
+  const session: WorldSession = rehearsing ? rehearsal : live;
 
   const [phase, setPhase] = useState<Phase>("pick");
   const [scenario, setScenario] = useState<Scenario | null>(null);
@@ -119,11 +137,15 @@ function IsekaiSession({
   const [correctTurns, setCorrectTurns] = useState(0);
 
   const [levelId, setLevelId] = useState(FIRST_FREE_LEVEL_ID);
-  // Beginner rungs: one word to echo, or a sentence frame to complete.
-  const [echoWord, setEchoWord] = useState<EchoWord | null>(null);
-  const [echoState, setEchoState] = useState<"waiting" | "ok" | "retry">("waiting");
-  const [taught, setTaught] = useState<string[]>([]);
+  // Rung 0: one sentence taught a word at a time. A step equal to the word
+  // count means "now say the whole thing".
+  const [sentence, setSentence] = useState<SentenceChallenge | null>(null);
+  const [sentenceStep, setSentenceStep] = useState(0);
+  const [sentenceState, setSentenceState] = useState<SentenceState>("waiting");
+  const [transforming, setTransforming] = useState(false);
   const [fillFrame, setFillFrame] = useState<FillFrame | null>(null);
+  // While true, no new card is fetched: a steer is still landing.
+  const [turnHold, setTurnHold] = useState(false);
   // Outcomes of recent turns, most recent last. Drives silent auto-levelling.
   const [rungHistory, setRungHistory] = useState<boolean[]>([]);
   const [narration, setNarration] = useState<NarrationData | null>(null);
@@ -131,21 +153,101 @@ function IsekaiSession({
   const [speaking, setSpeaking] = useState(false);
   const [vocab, setVocab] = useState<VocabEntry[]>([]);
   const [reviewing, setReviewing] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const level = getLevel(levelId);
+  const isFreeform = scenario?.id === "freeform";
+  const isCompanion = scenario?.id === "companion";
+  const step = scenario ? scenario.steps[stepIndex] : null;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Timers and the SDK fire long after the render that created them, so
+  // anything they read goes through a ref. (The session object in particular
+  // is rebuilt on every render — depending on it restarts whatever it is in.)
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const sceneEventsRef = useRef<SceneEvent[]>([]);
+  sceneEventsRef.current = sceneEvents;
+  const scenarioRef = useRef<Scenario | null>(null);
+  scenarioRef.current = scenario;
+  const levelRef = useRef(levelId);
+  levelRef.current = levelId;
+  const modeRef = useRef(level.mode);
+  modeRef.current = level.mode;
+  const checkingRef = useRef(false);
+  checkingRef.current = checking;
+  const speakingRef = useRef(false);
+  speakingRef.current = speaking;
+  const narratingRef = useRef(false);
+  narratingRef.current = narrating;
+  const pendingStart = useRef<string | null>(null);
+  const pendingSteer = useRef<string | null>(null);
+  const lastSteerAt = useRef(0);
+  const holdUntil = useRef(0);
+  const sequenceEnding = useRef<(() => void) | null>(null);
 
   useEffect(() => setVocab(loadVocab()), []);
   // Where they got to last time. Read after mount so the server render and the
   // first client render agree.
   useEffect(() => setLevelId(loadRung()), []);
 
-  // One narrator at a time — a new line cuts off whatever is still playing.
-  // Plays lines back to back, so Hina can say something in Japanese and then
+  // The world is the whole screen while you are in it; the page behind must
+  // not scroll under your fingers.
+  const inWorld = phase !== "pick";
+  useEffect(() => {
+    if (!inWorld) return;
+    document.body.classList.add("in-world");
+    return () => document.body.classList.remove("in-world");
+  }, [inWorld]);
+
+  /**
+   * Steer the running world. Every steer goes through here so the ambient
+   * world knows when the last one was, and so a prompt identical to the
+   * current one (which would not re-render, and so never fire) is sent anyway.
+   */
+  const steerTo = useCallback((prompt: string) => {
+    lastSteerAt.current = Date.now();
+    const current = sessionRef.current;
+    if (current.prompt === prompt) {
+      pendingSteer.current = null;
+      void current.steer();
+      return;
+    }
+    pendingSteer.current = prompt;
+    current.setPrompt(prompt);
+  }, []);
+
+  /** Hold off fetching the next card for a moment, e.g. while a steer lands. */
+  const holdTurn = useCallback((ms: number) => {
+    holdUntil.current = Math.max(holdUntil.current, Date.now() + ms);
+    setTurnHold(true);
+    setTimeout(() => {
+      if (Date.now() >= holdUntil.current - 20) setTurnHold(false);
+    }, ms);
+  }, []);
+
+  // One voice at a time — a new line cuts off whatever is still playing.
+  // Lines play back to back, so Hina can say something in Japanese and then
   // echo it in English without the second line cutting off the first.
-  const speakSequence = useCallback((lines: string[]) => {
+  // `onEnding` fires once, a little before the last line finishes (or at once
+  // if the sequence is cut off), which is when "stop talking" has to be sent.
+  const speakSequence = useCallback((lines: string[], opts: { onEnding?: () => void } = {}) => {
+    sequenceEnding.current?.();
     const queue = lines.map((l) => l.trim()).filter(Boolean);
-    if (!queue.length) return;
+
+    let ended = false;
+    const ending = () => {
+      if (ended) return;
+      ended = true;
+      if (sequenceEnding.current === ending) sequenceEnding.current = null;
+      opts.onEnding?.();
+    };
+    sequenceEnding.current = ending;
+
+    if (!queue.length) {
+      ending();
+      return;
+    }
 
     audioRef.current?.pause();
     setSpeaking(true);
@@ -154,14 +256,21 @@ function IsekaiSession({
     const playNext = () => {
       if (index >= queue.length) {
         setSpeaking(false);
+        ending();
         return;
       }
+      const last = index === queue.length - 1;
       try {
         const audio = new Audio(`/api/tts?text=${encodeURIComponent(queue[index++])}`);
         audioRef.current = audio;
         audio.onended = playNext;
         // A failed line shouldn't strand the rest of the queue.
         audio.onerror = playNext;
+        if (last) {
+          audio.ontimeupdate = () => {
+            if (audio.duration && audio.duration - audio.currentTime <= ENDING_LEAD_S) ending();
+          };
+        }
         void audio.play().catch(playNext);
       } catch {
         playNext();
@@ -173,7 +282,7 @@ function IsekaiSession({
   const speak = useCallback((text: string) => speakSequence([text]), [speakSequence]);
 
   const narrateScene = useCallback(
-    async (scene: string) => {
+    async (scene: string, aloud = true) => {
       if (!scene.trim()) return;
       setNarrating(true);
       try {
@@ -188,7 +297,7 @@ function IsekaiSession({
         }
         const data: NarrationData = await res.json();
         setNarration(data);
-        speak(data.japanese);
+        if (aloud) speak(data.japanese);
       } catch {
         setNarration(null);
       } finally {
@@ -197,56 +306,88 @@ function IsekaiSession({
     },
     [levelId, speak],
   );
+  const narrateRef = useRef(narrateScene);
+  narrateRef.current = narrateScene;
 
-  // Rung 0: fetch one visible thing from the scene and teach its word.
-  const offerEcho = useCallback(async (scene: string) => {
-    if (!scene.trim()) return;
-    setChoosing(true);
-    setEchoState("waiting");
-    try {
-      const res = await fetch("/api/word", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scene, taught: taughtRef.current }),
-      });
-      if (!res.ok) {
-        setEchoWord(null);
-        return;
+  /** Her voice, with her face doing the talking and then the listening. */
+  const hinaSays = useCallback(
+    (reply: CompanionReply) => {
+      // Beginners hear the English echo too; past that it stays on screen
+      // only, so the Japanese keeps carrying the turn.
+      const lines = levelRef.current <= 2 ? [reply.reply, reply.replyEn] : [reply.reply];
+      speakSequence(lines, { onEnding: () => steerTo(COMPANION_LISTENING) });
+    },
+    [speakSequence, steerTo],
+  );
+
+  // Rung 0: a sentence built from what is in the scene, whose payoff changes
+  // the whole world.
+  const offerSentence = useCallback(
+    async (scene: string) => {
+      if (!scene.trim()) return;
+      setChoosing(true);
+      setSentenceStep(0);
+      setSentenceState("waiting");
+      try {
+        const res = await fetch("/api/sentence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene,
+            recent: sceneEventsRef.current
+              .filter((e) => e.transform)
+              .map((e) => e.label || e.said || "")
+              .filter(Boolean)
+              .slice(-4),
+          }),
+        });
+        if (!res.ok) {
+          holdTurn(RETRY_MS);
+          return;
+        }
+        const challenge: SentenceChallenge = await res.json();
+        setSentence(challenge);
+        // Hear the first word before being asked to say it.
+        const first = challenge.parts.find((p) => p.kind === "word");
+        if (first) speak(first.kana);
+      } catch {
+        holdTurn(RETRY_MS);
+      } finally {
+        setChoosing(false);
       }
-      const word: EchoWord = await res.json();
-      setEchoWord(word);
-      setTaught((t) => [...t, word.kana]);
-      // Hear it before being asked to say it.
-      speak(word.kana);
-    } catch {
-      setEchoWord(null);
-    } finally {
-      setChoosing(false);
-    }
-  }, [speak]);
+    },
+    [speak, holdTurn],
+  );
 
   // Rung 2: a sentence frame with one gap and three ways to fill it.
-  const offerFill = useCallback(async (scene: string) => {
-    if (!scene.trim()) return;
-    setChoosing(true);
-    try {
-      const res = await fetch("/api/fill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scene,
-          recent: sceneEventsRef.current.filter((e) => e.source === "you").slice(-3).map((e) => e.text),
-        }),
-      });
-      setFillFrame(res.ok ? await res.json() : null);
-    } catch {
-      setFillFrame(null);
-    } finally {
-      setChoosing(false);
-    }
-  }, []);
+  const offerFill = useCallback(
+    async (scene: string) => {
+      if (!scene.trim()) return;
+      setChoosing(true);
+      try {
+        const res = await fetch("/api/fill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scene,
+            recent: sceneEventsRef.current.filter((e) => e.source === "you").slice(-3).map((e) => e.text),
+          }),
+        });
+        if (!res.ok) {
+          holdTurn(RETRY_MS);
+          return;
+        }
+        setFillFrame(await res.json());
+      } catch {
+        holdTurn(RETRY_MS);
+      } finally {
+        setChoosing(false);
+      }
+    },
+    [holdTurn],
+  );
 
-  // Choice mode: fetch two kana-only options for whatever the scene is now.
+  // Rung 1: two kana-only options for whatever the scene is now.
   const offerChoices = useCallback(
     async (scene: string) => {
       if (!scene.trim()) return;
@@ -261,20 +402,47 @@ function IsekaiSession({
           }),
         });
         if (!res.ok) {
-          setChoices(null);
+          holdTurn(RETRY_MS);
           return;
         }
         const data: { choices: Choice[] } = await res.json();
-        setChoices(data.choices ?? null);
+        if (data.choices?.length) setChoices(data.choices);
+        else holdTurn(RETRY_MS);
       } catch {
-        setChoices(null);
+        holdTurn(RETRY_MS);
       } finally {
         setChoosing(false);
       }
     },
-    [],
+    [holdTurn],
   );
 
+  // Whatever rung you are on, if its card is missing and nothing is on its
+  // way, fetch one. Driven by state rather than called by hand, so a level
+  // change — from the picker or from silent auto-levelling — can never leave
+  // the player looking at an empty card.
+  useEffect(() => {
+    if (phase !== "playing" || !scenario || isCompanion || turnHold || choosing) return;
+    if (!session.runStarted) return;
+    if (level.mode === "sentence" && !sentence) void offerSentence(runningScene);
+    else if (level.mode === "choose" && !choices) void offerChoices(runningScene);
+    else if (level.mode === "fill" && !fillFrame) void offerFill(runningScene);
+  }, [
+    phase,
+    scenario,
+    isCompanion,
+    turnHold,
+    choosing,
+    session.runStarted,
+    level.mode,
+    sentence,
+    choices,
+    fillFrame,
+    runningScene,
+    offerSentence,
+    offerChoices,
+    offerFill,
+  ]);
 
   // The world keeps moving whether or not you act. This is what makes a live
   // model load-bearing rather than decorative — and it's effectively free,
@@ -282,19 +450,15 @@ function IsekaiSession({
   // whether the scene changes.
   const driftBusy = useRef(false);
   const driftCount = useRef(0);
-  // The interval closes over state once, so read events through a ref.
-  const sceneEventsRef = useRef<SceneEvent[]>([]);
-  sceneEventsRef.current = sceneEvents;
-  // Read inside callbacks that must not be rebuilt every time a word is taught.
-  const taughtRef = useRef<string[]>([]);
-  taughtRef.current = taught;
 
   useEffect(() => {
-    if (phase !== "playing" || !worldAlive || !scenario) return;
+    if (phase !== "playing" || !worldAlive || !scenario || !session.runStarted) return;
 
     const id = setInterval(async () => {
-      // Never talk over the player's turn or a steer already in flight.
-      if (driftBusy.current || checking || pendingSteer.current !== null) return;
+      // Never talk over the player's turn, a steer still in flight, or a
+      // voice mid-line — least of all Hina's, whose face is being steered.
+      if (driftBusy.current || checkingRef.current || pendingSteer.current !== null) return;
+      if (speakingRef.current || Date.now() - lastSteerAt.current < DRIFT_QUIET_MS) return;
       driftBusy.current = true;
       try {
         driftCount.current += 1;
@@ -320,9 +484,11 @@ function IsekaiSession({
         setSceneEvents(next);
         setWorldEvent({ text: drift.event, urgent: Boolean(drift.urgent) });
         const nextScene = composeScene(scenario.basePrompt, next);
-        pendingSteer.current = nextScene;
-        session.setPrompt(nextScene);
-        void narrateScene(nextScene);
+        steerTo(nextScene);
+        // With Hina, the narrator's voice would be mistaken for hers with her
+        // mouth shut; below the free rungs it would talk over the word being
+        // taught. Both still get the line on screen.
+        if (scenario.id !== "companion") void narrateRef.current(nextScene, modeRef.current === "free");
       } catch {
         // A missed beat is harmless; the next tick tries again.
       } finally {
@@ -331,7 +497,7 @@ function IsekaiSession({
     }, 22_000);
 
     return () => clearInterval(id);
-  }, [phase, worldAlive, scenario, checking, session, narrateScene]);
+  }, [phase, worldAlive, scenario, session.runStarted, steerTo]);
 
   const handleSaveWord = (token: NarrationToken) => {
     setVocab(saveWord({ surface: token.surface, reading: token.reading, meaning: token.meaning }));
@@ -340,9 +506,6 @@ function IsekaiSession({
   const handleRemoveWord = (surface: string) => setVocab(removeWord(surface));
 
   const savedSurfaces = new Set(vocab.map((v) => v.surface));
-
-  const pendingStart = useRef<string | null>(null);
-  const pendingSteer = useRef<string | null>(null);
 
   // Fires session.startRun() once session.prompt catches up to a pending
   // "begin the world" request — set_prompt is async React state, so we wait
@@ -362,60 +525,96 @@ function IsekaiSession({
     }
   }, [session.prompt, session]);
 
-  // What this rung asks for this turn. Below "free" the world is open-ended
-  // even in a scripted world: a beginner cannot hit a scripted objective, and
-  // gating the world behind competence is exactly what this ladder exists to
-  // avoid.
-  const modeRef = useRef(level.mode);
-  modeRef.current = level.mode;
-
-  const nextTurn = useCallback(
-    (scene: string) => {
-      switch (modeRef.current) {
-        case "echo":
-          return void offerEcho(scene);
-        case "choose":
-          return void offerChoices(scene);
-        case "fill":
-          return void offerFill(scene);
-        default:
-          return;
-      }
-    },
-    [offerEcho, offerChoices, offerFill],
-  );
-
-  useEffect(() => {
-    if (phase === "starting" && session.runStarted) {
-      setPhase("playing");
-      void narrateScene(runningScene);
-      nextTurn(runningScene);
-    }
-  }, [phase, session.runStarted, narrateScene, runningScene, nextTurn]);
-
   /**
    * Record how a turn went and move the rung if the pattern is clear.
    * Deliberately silent: the player should notice Hina speaking more Japanese,
    * not a number going up.
    */
-  const recordTurn = useCallback(
-    (ok: boolean) => {
-      setRungHistory((history) => {
-        const next = [...history, ok].slice(-6);
-        setLevelId((current) => {
-          const moved = nextRung(current, next);
-          if (moved !== current) {
-            saveRung(moved);
-            // Fresh slate after a move, or the same four turns would move it again.
-            queueMicrotask(() => setRungHistory([]));
-          }
-          return moved;
-        });
-        return next;
+  const recordTurn = useCallback((ok: boolean) => {
+    setRungHistory((history) => {
+      const next = [...history, ok].slice(-6);
+      setLevelId((current) => {
+        const moved = nextRung(current, next);
+        // えらぶ has no objective to type an answer to, so it tops out at the
+        // rungs that bring their own cards.
+        const capped = scenarioRef.current?.id === "choices" ? Math.min(moved, 2) : moved;
+        if (capped !== current) {
+          saveRung(capped);
+          // Fresh slate after a move, or the same four turns would move it again.
+          queueMicrotask(() => setRungHistory([]));
+        }
+        return capped;
       });
-    },
-    [],
-  );
+      return next;
+    });
+  }, []);
+
+  // Companion mode is a conversation, not a graded turn: whatever you say goes
+  // to Hina, she answers in Japanese, and her answer steers the world.
+  const talkToCompanion = async (greeting = false) => {
+    const said = answer.trim();
+    if ((!greeting && !said) || checking || !scenario) return;
+    setChecking(true);
+    setFeedback(null);
+    // She starts talking now, not when her audio arrives: the reply and its
+    // voice take ~3s to come back, and a prompt takes 2-4s to reach her face.
+    steerTo(COMPANION_TALKING);
+    try {
+      const res = await fetch("/api/companion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          greeting
+            ? { greeting: true, scene: runningScene, level: levelId }
+            : { said, scene: runningScene, level: levelId, history: conversation },
+        ),
+      });
+      if (!res.ok) {
+        steerTo(COMPANION_LISTENING);
+        if (!greeting) setFeedback({ ok: false, text: `${COMPANION_NAME} didn't catch that — try again.` });
+        return;
+      }
+      const data: CompanionReply = await res.json();
+
+      setConversation((c) =>
+        greeting
+          ? [...c, { role: "companion", text: data.reply }]
+          : [...c, { role: "you", text: said }, { role: "companion", text: data.reply }],
+      );
+      setCompanionLine(data);
+      if (!greeting) {
+        setAnswer("");
+        setTurns((t) => t + 1);
+      }
+
+      if (data.sceneAddEn) {
+        setSceneEvents((events) =>
+          addEvent(events, { text: data.sceneAddEn, source: "companion", said: greeting ? undefined : said }),
+        );
+        // One clear change on top of the talking she is already doing — the
+        // world around her is not restated, per the Orbis prompt guide.
+        steerTo(whileCompanionTalks(data.sceneAddEn));
+      }
+      hinaSays(data);
+    } catch {
+      steerTo(COMPANION_LISTENING);
+    } finally {
+      setChecking(false);
+    }
+  };
+  const greetRef = useRef(talkToCompanion);
+  greetRef.current = talkToCompanion;
+
+  useEffect(() => {
+    if (phase === "starting" && session.runStarted) {
+      setPhase("playing");
+      // Hina speaks first, so her first words come with her face moving; the
+      // narrator opens only where the player answers freely — below that the
+      // first thing heard is the word being taught.
+      if (scenarioRef.current?.id === "companion") void greetRef.current(true);
+      else if (modeRef.current === "free") void narrateRef.current(runningScene);
+    }
+  }, [phase, session.runStarted, runningScene]);
 
   const enterScenario = async (chosen: Scenario) => {
     setScenario(chosen);
@@ -429,10 +628,15 @@ function IsekaiSession({
     setConversation([]);
     setCompanionLine(null);
     setChoices(null);
-    setEchoWord(null);
+    setSentence(null);
+    setSentenceStep(0);
+    setSentenceState("waiting");
+    setTransforming(false);
+    setTurnHold(false);
     setFillFrame(null);
-    setTaught([]);
+    setNarration(null);
     setRungHistory([]);
+    setPanelOpen(false);
     // The かな card is the choose rung by name, so picking it means that rung
     // however far up the ladder you had climbed.
     if (chosen.id === "choices") setLevelId(1);
@@ -465,123 +669,163 @@ function IsekaiSession({
   };
 
   const leaveWorld = async () => {
-    await session.disconnectSession();
+    sequenceEnding.current = null;
+    audioRef.current?.pause();
+    setSpeaking(false);
+    // Unmount the world view before its tracks close, and so the "dream has
+    // faded" screen does not flash while the session winds down.
     setPhase("pick");
     setScenario(null);
+    await session.disconnectSession();
   };
 
-  const isFreeform = scenario?.id === "freeform";
-  const isCompanion = scenario?.id === "companion";
-  const step = scenario ? scenario.steps[stepIndex] : null;
-
-  /** Steer the world and queue the next turn. Shared by every beginner rung. */
+  /** Steer the world and let it land before the next card. Shared by rungs 1 and 2. */
   const applyTurn = (sceneAddEn: string, said: string) => {
     if (!scenario) return;
-    const next = addEvent(sceneEvents, { text: sceneAddEn, source: "you", said });
+    const next = addEvent(sceneEventsRef.current, { text: sceneAddEn, source: "you", said });
     setSceneEvents(next);
     setWorldEvent(null);
     setTurns((t) => t + 1);
     setCorrectTurns((c) => c + 1);
-
-    const nextScene = composeScene(scenario.basePrompt, next);
-    pendingSteer.current = nextScene;
-    session.setPrompt(nextScene);
-    // Let the steer land before asking what could happen after it.
-    setTimeout(() => nextTurn(nextScene), 1200);
+    steerTo(composeScene(scenario.basePrompt, next));
+    holdTurn(1200);
   };
 
   /**
-   * Rung 0. Graded on the client against the kana and its romanisation, with
-   * no network call: this is the first Japanese a beginner ever speaks, and a
-   * second of latency at that exact moment is the difference between "the
-   * world answered me" and "I submitted a form".
+   * The sentence landed. The world is steered with one clear transformation,
+   * the whole new scene goes into the log as the new base for everything that
+   * steers after it, and the narrator describing the new world is the reward.
+   * The next sentence waits until that has landed and been heard.
    */
-  const sayEcho = (said: string) => {
-    if (!echoWord || checking) return;
-    const { ok } = matchesEcho(said, echoWord.kana, echoWord.romaji, echoWord.accept);
-    if (!ok) {
-      setEchoState("retry");
-      recordTurn(false);
-      // Say it again for them — hearing the target right after their own
-      // attempt is the most useful correction there is.
-      speak(echoWord.kana);
+  const transformWorld = (challenge: SentenceChallenge) => {
+    const next = addEvent(sceneEventsRef.current, {
+      text: challenge.sceneEn,
+      source: "you",
+      said: challenge.sentenceKana,
+      label: challenge.sentenceEn,
+      transform: true,
+    });
+    setSceneEvents(next);
+    setWorldEvent(null);
+    setTurns((t) => t + 1);
+    setCorrectTurns((c) => c + 1);
+    setTransforming(true);
+    setTurnHold(true);
+    steerTo(challenge.changeEn);
+    void narrateRef.current(challenge.sceneEn);
+
+    const release = () => {
+      if (speakingRef.current || narratingRef.current) {
+        setTimeout(release, 600);
+        return;
+      }
+      setTransforming(false);
+      setSentence(null);
+      setSentenceStep(0);
+      setSentenceState("waiting");
+      setTurnHold(false);
+    };
+    setTimeout(release, AFTER_TRANSFORM_MS);
+  };
+
+  /**
+   * Rung 0, graded on the device with no network call: this is the first
+   * Japanese a beginner ever speaks, and a second of latency at that moment is
+   * the difference between "the world answered me" and "I submitted a form".
+   */
+  const sentenceWords = sentence ? sentence.parts.filter((p) => p.kind === "word") : [];
+  const sentenceRef = useRef(sentence);
+  sentenceRef.current = sentence;
+  const judging = useRef(false);
+
+  /**
+   * The on-device match said no. Before telling a beginner they were wrong,
+   * ask once whether the recogniser just spelled the right words differently
+   * (差す for さす). Only Japanese text can have that problem — typed romaji
+   * is judged on the device alone.
+   */
+  const heardAs = async (said: string, target: string, english?: string) => {
+    if (!/[぀-ヿ一-龯]/.test(said)) return false;
+    judging.current = true;
+    setSentenceState("checking");
+    try {
+      const res = await fetch("/api/heard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ said, target, english }),
+      });
+      return res.ok && Boolean((await res.json()).ok);
+    } catch {
+      return false;
+    } finally {
+      judging.current = false;
+    }
+  };
+
+  const saySentence = async (said: string) => {
+    if (!sentence || !scenario || transforming || judging.current) return;
+    if (sentenceState === "ok" || !said.trim()) return;
+    const asked = sentence;
+
+    if (sentenceStep < sentenceWords.length) {
+      const word = sentenceWords[sentenceStep];
+      const ok = matchesWord(said, word) || (await heardAs(said, word.kana, word.english));
+      // They may have left, or the world moved on, while that was checked.
+      if (sentenceRef.current !== asked) return;
+      if (!ok) {
+        setSentenceState("retry");
+        // Hearing the target right after their own attempt is the most useful
+        // correction there is.
+        speak(word.kana);
+        return;
+      }
+      setSentenceState("ok");
+      setVocab(saveWord({ surface: word.kana, reading: word.kana, meaning: word.english ?? "" }));
+      const nextStep = sentenceStep + 1;
+      const nextTarget = nextStep < sentenceWords.length ? sentenceWords[nextStep].kana : sentence.sentenceKana;
+      setTimeout(() => {
+        setSentenceStep(nextStep);
+        setSentenceState("waiting");
+        speak(nextTarget);
+      }, 650);
       return;
     }
 
-    setEchoState("ok");
+    const ok =
+      matchesSentence(said, sentenceWords).ok ||
+      (await heardAs(said, sentence.sentenceKana, sentence.sentenceEn));
+    if (sentenceRef.current !== asked) return;
+    if (!ok) {
+      setSentenceState("retry");
+      recordTurn(false);
+      speak(sentence.sentenceKana);
+      return;
+    }
+    setSentenceState("ok");
     recordTurn(true);
     setStreak((s) => s + 1);
-    setVocab(saveWord({ surface: echoWord.kana, reading: echoWord.kana, meaning: echoWord.english }));
-    const word = echoWord;
-    setTimeout(() => {
-      setEchoWord(null);
-      applyTurn(word.sceneAddEn, word.kana);
-    }, 700);
+    transformWorld(sentence);
   };
 
   /** Rung 2. No option is wrong — whichever is picked is what happens. */
   const pickFill = (option: FillOption) => {
     if (!fillFrame || checking) return;
-    const sentence = fillFrame.frameKana.replace("___", option.kana);
+    const said = fillFrame.frameKana.replace("___", option.kana);
     setFillFrame(null);
     recordTurn(true);
     setStreak((s) => s + 1);
     setVocab(saveWord({ surface: option.kana, reading: option.kana, meaning: option.english }));
-    speak(sentence);
-    applyTurn(option.sceneAddEn, sentence);
+    speak(said);
+    applyTurn(option.sceneAddEn, said);
   };
 
-  const pickChoice = async (choice: Choice) => {
+  const pickChoice = (choice: Choice) => {
     if (!scenario || checking) return;
-    setChecking(true);
     setChoices(null);
-    try {
-      recordTurn(true);
-      setVocab(saveWord({ surface: choice.kana, reading: choice.kana, meaning: choice.english }));
-      speak(choice.kana);
-      applyTurn(choice.sceneAddEn, choice.kana);
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  // Companion mode is a conversation, not a graded turn: whatever you say goes
-  // to Hina, she answers in Japanese, and her answer steers the world.
-  const talkToCompanion = async () => {
-    const said = answer.trim();
-    if (!said || checking || !scenario) return;
-    setChecking(true);
-    setFeedback(null);
-    try {
-      const res = await fetch("/api/companion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ said, scene: runningScene, level: levelId, history: conversation }),
-      });
-      if (!res.ok) {
-        setFeedback({ ok: false, text: `${COMPANION_NAME} didn't catch that — try again.` });
-        return;
-      }
-      const data: CompanionReply = await res.json();
-
-      setConversation((c) => [...c, { role: "you", text: said }, { role: "companion", text: data.reply }]);
-      setCompanionLine(data);
-      setAnswer("");
-      setTurns((t) => t + 1);
-      // Beginners hear the English echo too; past that it stays on screen only,
-      // so the Japanese keeps carrying the turn.
-      speakSequence(levelId <= 2 ? [data.reply, data.replyEn] : [data.reply]);
-
-      if (data.sceneAddEn) {
-        const next = addEvent(sceneEvents, { text: data.sceneAddEn, source: "companion", said });
-        setSceneEvents(next);
-        const nextScene = withCompanion(composeScene(scenario.basePrompt, next));
-        pendingSteer.current = nextScene;
-        session.setPrompt(nextScene);
-      }
-    } finally {
-      setChecking(false);
-    }
+    recordTurn(true);
+    setVocab(saveWord({ surface: choice.kana, reading: choice.kana, meaning: choice.english }));
+    speak(choice.kana);
+    applyTurn(choice.sceneAddEn, choice.kana);
   };
 
   const submitAnswer = async () => {
@@ -629,8 +873,7 @@ function IsekaiSession({
         const nextScene = scenario ? composeScene(scenario.basePrompt, nextEvents) : runningScene;
         setSceneEvents(nextEvents);
         setWorldEvent(null);
-        pendingSteer.current = nextScene;
-        session.setPrompt(nextScene);
+        steerTo(nextScene);
         setAnswer("");
 
         // On success the narrator describing the changed world is the reward,
@@ -667,16 +910,68 @@ function IsekaiSession({
     return () => clearInterval(id);
   }, [session.runStarted]);
 
-  const statusLabel =
-    session.status === "ready" ? "Live" : session.status === "connecting" ? "Connecting" : session.status;
+  const statusLabel = rehearsing
+    ? "Rehearsal"
+    : session.status === "ready"
+      ? "Live"
+      : session.status === "connecting"
+        ? "Connecting"
+        : session.status;
+
+  // Once a world has been playing, losing the run means the session ended —
+  // the 5-minute cap, or the connection dropping. Say so, rather than leaving
+  // a frozen frame with nothing to explain it.
+  const worldEnded = phase === "playing" && !session.runStarted;
+  const answersFreely = isCompanion || (level.mode === "free" && (isFreeform || Boolean(step)));
+
+  const levelPicker = (
+    <>
+      <div className="level-picker" role="group" aria-label="Difficulty level">
+        {LEVELS.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            className={`level-chip ${l.id === levelId ? "active" : ""}`}
+            onClick={() => {
+              setLevelId(l.id);
+              saveRung(l.id);
+            }}
+            title={l.blurb}
+          >
+            <span className="level-chip-jp">{l.nameJp}</span>
+            <span className="level-chip-en">{l.nameEn}</span>
+          </button>
+        ))}
+      </div>
+      <p className="level-note">
+        {levelId < FIRST_FREE_LEVEL_ID ? (
+          <>
+            No Japanese needed. It adjusts itself as you play.{" "}
+            <button
+              type="button"
+              className="level-jump"
+              onClick={() => {
+                setLevelId(FIRST_FREE_LEVEL_ID);
+                saveRung(FIRST_FREE_LEVEL_ID);
+              }}
+            >
+              I already know some Japanese →
+            </button>
+          </>
+        ) : (
+          <>It adjusts itself as you play — this is just where you start.</>
+        )}
+      </p>
+    </>
+  );
 
   return (
     <div className="isekai">
       {phase === "pick" && (
         <>
-          {/* A failed connect drops straight back here, and the HUD that
-              normally shows session.error has just unmounted — so without
-              this the world silently bounces you home with no reason given. */}
+          {/* A failed connect drops straight back here, and the world view
+              that normally shows session.error has just unmounted — so
+              without this the world silently bounces you home. */}
           {session.error && (
             <div className="connect-error">
               <strong>Could not open that world.</strong>
@@ -689,336 +984,144 @@ function IsekaiSession({
       )}
 
       {phase !== "pick" && (
-        <div className="isekai-play">
-          <div className="isekai-video">
-            <OrbisPlayer
-              connected={session.connected}
-              muted={session.muted}
-              runStarted={session.runStarted}
-              status={session.status}
-            />
+        <div className={`isekai-play ${panelOpen ? "panel-open" : ""}`}>
+          {/* The world is the screen, not a picture on it. Everything else
+              floats over it and stays out of the way. */}
+          <div className="world-stage">
+            {rehearsing ? (
+              <RehearsalWorld
+                scenarioId={scenario?.id ?? ""}
+                prompt={rehearsal.lastSteer}
+                running={session.runStarted}
+              />
+            ) : (
+              <OrbisPlayer
+                muted={session.muted}
+                runStarted={session.runStarted}
+                status={session.status}
+                fit="cover"
+              />
+            )}
+            <div className="world-scrim" aria-hidden="true" />
             {(phase === "connecting" || phase === "starting") && (
               <div className="isekai-loading">
                 <span className="isekai-spinner" aria-hidden="true" />
                 {phase === "connecting" ? "Opening a portal to the world…" : "The world is waking up…"}
               </div>
             )}
-
-            {/* Subtitle track. The narration lives here too so your eyes stay
-                on the world instead of darting to the side panel. */}
-            {phase === "playing" && narration && (
-              <div className={`subtitle ${speaking ? "speaking" : ""}`}>
-                <p className="subtitle-jp">{narration.japanese}</p>
-                {feedback && (
-                  <p className={`subtitle-feedback ${feedback.ok ? "ok" : "no"}`}>
-                    {feedback.text}
-                  </p>
-                )}
-              </div>
-            )}
           </div>
 
-          <div className="isekai-hud">
-            <div className="isekai-topline">
-              <button className="isekai-leave" onClick={() => void leaveWorld()}>
-                <ArrowLeftIcon /> Leave
-              </button>
-              <span className="isekai-title">
-                {scenario?.titleJp}
-                <em>{scenario?.titleEn}</em>
-              </span>
+          <header className="world-top">
+            <button className="isekai-leave" onClick={() => void leaveWorld()}>
+              <ArrowLeftIcon /> Leave
+            </button>
+            <span className="isekai-title">
+              {scenario?.titleJp}
+              <em>{scenario?.titleEn}</em>
+            </span>
+            <div className="world-top-right">
+              {session.runStarted && (
+                <div className={`session-meter ${elapsed >= 240 ? "warn" : ""}`}>
+                  <span className="session-meter-time">
+                    {String(Math.floor(elapsed / 60)).padStart(2, "0")}:
+                    {String(elapsed % 60).padStart(2, "0")}
+                  </span>
+                  <span className="session-meter-bar">
+                    <span
+                      className="session-meter-fill"
+                      style={{ width: `${Math.min(100, (elapsed / 300) * 100)}%` }}
+                    />
+                  </span>
+                </div>
+              )}
               <span className={`isekai-live isekai-live-${session.status}`}>
                 <span className="isekai-live-dot" />
                 {statusLabel}
               </span>
-            </div>
-
-            {session.runStarted && (
-              <div className={`session-meter ${elapsed >= 240 ? "warn" : ""}`}>
-                <span className="session-meter-time">
-                  {String(Math.floor(elapsed / 60)).padStart(2, "0")}:
-                  {String(elapsed % 60).padStart(2, "0")}
-                </span>
-                <span className="session-meter-bar">
-                  <span
-                    className="session-meter-fill"
-                    style={{ width: `${Math.min(100, (elapsed / 300) * 100)}%` }}
-                  />
-                </span>
-                <span className="session-meter-cost">${(elapsed * 0.0097).toFixed(2)}</span>
-              </div>
-            )}
-
-            {scenario && !isFreeform && (
-              <div className="isekai-progress">
-                <div className="isekai-progress-steps">
-                  {scenario.steps.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`step ${i < stepIndex || phase === "complete" ? "done" : i === stepIndex ? "active" : ""}`}
-                    >
-                      {i < stepIndex || phase === "complete" ? <CheckIcon /> : i + 1}
-                    </span>
-                  ))}
-                </div>
-                <span className="isekai-streak">
-                  <FlameIcon /> {streak}
-                </span>
-              </div>
-            )}
-
-            {scenario && isFreeform && phase !== "complete" && (
-              <div className="isekai-progress">
-                <span className="isekai-freeform-turn">Turn {turns + 1}</span>
-                <span className="isekai-streak">
-                  <FlameIcon /> {streak}
-                </span>
-              </div>
-            )}
-
-            {phase === "playing" && (
+              {phase === "playing" && (
+                <>
+                  <button
+                    type="button"
+                    className={`world-toggle ${worldAlive ? "alive" : ""}`}
+                    onClick={() => setWorldAlive((v) => !v)}
+                    aria-pressed={worldAlive}
+                    title={
+                      worldAlive
+                        ? "The world is moving on its own — click to hold it still"
+                        : "The world is paused — click to bring it back to life"
+                    }
+                  >
+                    <span className="world-toggle-dot" />
+                    {worldAlive ? "Living" : "Paused"}
+                  </button>
+                  <button
+                    type="button"
+                    className={`world-chip ${session.muted ? "" : "on"}`}
+                    onClick={session.toggleMuted}
+                    aria-pressed={!session.muted}
+                    title={session.muted ? "Hear the world’s own sound" : "Mute the world’s own sound"}
+                  >
+                    {session.muted ? <SoundOffIcon /> : <SoundOnIcon />}
+                    <span className="world-chip-label">Sound</span>
+                  </button>
+                </>
+              )}
               <button
                 type="button"
-                className={`world-toggle ${worldAlive ? "alive" : ""}`}
-                onClick={() => setWorldAlive((v) => !v)}
-                aria-pressed={worldAlive}
-                title={
-                  worldAlive
-                    ? "The world is moving on its own — click to hold it still"
-                    : "The world is paused — click to bring it back to life"
-                }
+                className={`world-chip ${panelOpen ? "on" : ""}`}
+                onClick={() => setPanelOpen((v) => !v)}
+                aria-expanded={panelOpen}
+                title="Level, the narrator’s words, and your saved vocabulary"
               >
-                <span className="world-toggle-dot" />
-                {worldAlive ? "Living world" : "World paused"}
-              </button>
-            )}
-
-            {/* The ladder moves itself as you play; this is here so a returning
-                player can jump, not so anyone has to self-assess before they
-                start. */}
-            {phase === "playing" && (
-              <>
-              <div className="level-picker" role="group" aria-label="Difficulty level">
-                {LEVELS.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    className={`level-chip ${l.id === levelId ? "active" : ""}`}
-                    onClick={() => {
-                      setLevelId(l.id);
-                      saveRung(l.id);
-                    }}
-                    title={l.blurb}
-                  >
-                    <span className="level-chip-jp">{l.nameJp}</span>
-                    <span className="level-chip-en">{l.nameEn}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="level-note">
-                {levelId < FIRST_FREE_LEVEL_ID ? (
-                  <>
-                    No Japanese needed — you&rsquo;ll be saying words out loud within a minute.{" "}
-                    <button
-                      type="button"
-                      className="level-jump"
-                      onClick={() => {
-                        setLevelId(FIRST_FREE_LEVEL_ID);
-                        saveRung(FIRST_FREE_LEVEL_ID);
-                      }}
-                    >
-                      I already know some Japanese →
-                    </button>
-                  </>
-                ) : (
-                  <>It adjusts itself as you play — this is just where you start.</>
-                )}
-              </p>
-              </>
-            )}
-
-            {phase === "playing" && narrating && !narration && (
-              <div className="narration narration-loading">
-                <span className="isekai-spinner small" aria-hidden="true" />
-                The world is finding its words…
-              </div>
-            )}
-
-            {phase === "playing" && worldEvent && (
-              <div className={`world-event ${worldEvent.urgent ? "urgent" : ""}`}>
-                <span className="world-event-tag">
-                  {worldEvent.urgent ? "The world needs you" : "Meanwhile"}
+                <span className="world-chip-level" lang="ja">
+                  {level.nameJp}
                 </span>
-                {worldEvent.text}
-              </div>
-            )}
-
-            {phase === "playing" && narration && !isCompanion && (
-              <Narration
-                tokens={narration.tokens}
-                english={narration.english}
-                savedSurfaces={savedSurfaces}
-                onSaveWord={handleSaveWord}
-                onReplay={() => speak(narration.japanese)}
-                speaking={speaking}
-              />
-            )}
-
-            {phase === "playing" && isCompanion && companionLine && (
-              <div className="companion-line">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="companion-avatar" src={COMPANION_IMAGE} alt="" />
-                <div className="companion-speech">
-                  <span className="companion-name">{COMPANION_NAME}</span>
-                  <Narration
-                    tokens={companionLine.tokens}
-                    english={companionLine.replyEn}
-                    savedSurfaces={savedSurfaces}
-                    onSaveWord={handleSaveWord}
-                    englishAlwaysOn
-                    onReplay={() =>
-                      speakSequence(
-                        levelId <= 2
-                          ? [companionLine.reply, companionLine.replyEn]
-                          : [companionLine.reply],
-                      )
-                    }
-                    speaking={speaking}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Beginner rungs. The world is open-ended here even in a scripted
-                world — a beginner cannot hit a scripted objective, and the
-                reward must never be gated behind competence. */}
-            {phase === "playing" && !isCompanion && level.mode !== "free" && (
-              <>
-                {level.mode === "echo" && echoWord ? (
-                  <>
-                    <EchoCard
-                      word={echoWord}
-                      romaji={level.romaji}
-                      onReplay={() => speak(echoWord.kana)}
-                      speaking={speaking}
-                      heard={answer}
-                      state={echoState}
-                    />
-                    <MicButton
-                      onResult={(text) => setAnswer(text)}
-                      onSpeechEnd={() => {
-                        sayEcho(answer);
-                        setAnswer("");
-                      }}
-                      disabled={checking}
-                      autoStart={phase === "playing"}
-                      holdWhileSpeaking={speaking}
-                    />
-                  </>
-                ) : level.mode === "choose" && choices ? (
-                  <ChoiceCards
-                    choices={choices}
-                    onPick={(c) => void pickChoice(c)}
-                    disabled={checking}
-                    onSpeak={speak}
-                  />
-                ) : level.mode === "fill" && fillFrame ? (
-                  <FillCard
-                    frame={fillFrame}
-                    onPick={pickFill}
-                    disabled={checking}
-                    onSpeak={speak}
-                    showEnglish={level.support === "all" || level.support === "new"}
-                  />
-                ) : (
-                  <div className="narration narration-loading">
-                    <span className="isekai-spinner small" aria-hidden="true" />
-                    {choosing ? "Looking at the world…" : "…"}
-                  </div>
+                <span className="world-chip-label">{level.nameEn}</span>
+                {streak > 0 && (
+                  <span className="world-chip-streak">
+                    <FlameIcon /> {streak}
+                  </span>
                 )}
-                <button className="isekai-finish" onClick={() => setPhase("complete")}>
-                  Finish this story
-                </button>
-              </>
-            )}
+              </button>
+            </div>
+          </header>
 
-            {phase === "playing" && (isCompanion || (level.mode === "free" && (isFreeform || step))) && (
-              <>
-                <div className="isekai-objective">
-                  {isCompanion ? (
-                    <>
-                      <div className="label">Say anything to {COMPANION_NAME}, in Japanese</div>
-                      <div className="objective-en">
-                        She&rsquo;ll answer — and the world moves with her.
-                      </div>
-                    </>
-                  ) : isFreeform ? (
-                    <>
-                      <div className="label">Your turn — describe anything, in Japanese</div>
-                      <div className="objective-en">
-                        What happens next in your world? A creature, the weather, a new place — anything.
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="label">Your turn — say it in Japanese</div>
-                      <div className="objective-en">{step!.objectiveEn}</div>
-                      <div className="objective-hint">
-                        <span>hint</span>
-                        {step!.hintJp}
-                      </div>
-                    </>
-                  )}
-                </div>
+          {phase === "playing" && worldEvent && (
+            <div className={`world-event world-toast ${worldEvent.urgent ? "urgent" : ""}`} key={worldEvent.text}>
+              <span className="world-event-tag">
+                {worldEvent.urgent ? "The world needs you" : "Meanwhile"}
+              </span>
+              {worldEvent.text}
+            </div>
+          )}
 
-                <form
-                  className="isekai-input-row"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void submitAnswer();
-                  }}
-                >
-                  <input
-                    type="text"
-                    className="isekai-input"
-                    placeholder={level.inputHint}
-                    value={answer}
-                    onChange={(e) => setAnswer(e.target.value)}
-                    disabled={checking}
-                  />
-                  <MicButton
-                    onResult={(text) => setAnswer(text)}
-                    onSpeechEnd={() => void submitAnswer()}
-                    disabled={checking}
-                    autoStart={phase === "playing"}
-                    holdWhileSpeaking={speaking}
-                  />
+          {worldEnded ? (
+            <div className="world-modal">
+              <div className="world-ended">
+                <SparkleIcon />
+                <h2>The dream has faded</h2>
+                <p>
+                  A live world runs for up to five minutes at a time. Step back in and it starts again,
+                  fresh.
+                </p>
+                <div className="world-ended-actions">
                   <button
-                    type="submit"
-                    className="isekai-submit"
-                    disabled={checking || !answer.trim()}
-                    aria-label="Submit answer"
+                    className="isekai-submit isekai-submit-wide"
+                    onClick={() => {
+                      const again = scenario;
+                      void leaveWorld().then(() => again && void enterScenario(again));
+                    }}
                   >
-                    {checking ? <span className="isekai-spinner small" aria-hidden="true" /> : <SendIcon />}
+                    Dream again
                   </button>
-                </form>
-
-                {feedback && (
-                  <div className={`isekai-feedback ${feedback.ok ? "ok" : "no"}`}>
-                    {feedback.ok ? <CheckIcon /> : <RetryIcon />}
-                    {feedback.text}
-                  </div>
-                )}
-
-                {(isFreeform || isCompanion) && (
-                  <button className="isekai-finish" onClick={() => setPhase("complete")}>
-                    {isCompanion ? "End the walk" : "Finish this world"}
+                  <button className="isekai-leave" onClick={() => setPhase("complete")}>
+                    See your story
                   </button>
-                )}
-              </>
-            )}
-
-            {phase === "complete" && (
+                </div>
+              </div>
+            </div>
+          ) : phase === "complete" ? (
+            <div className="world-modal">
               <div className="isekai-complete">
                 <SparkleIcon />
                 <h2>You shaped this world</h2>
@@ -1051,7 +1154,7 @@ function IsekaiSession({
                           </span>
                           <span className="story-beat-text">
                             {e.said && <em>&ldquo;{e.said}&rdquo; — </em>}
-                            {e.text}
+                            {e.label ?? e.text}
                           </span>
                         </li>
                       ))}
@@ -1063,31 +1166,292 @@ function IsekaiSession({
                   Choose another world
                 </button>
               </div>
+            </div>
+          ) : (
+            phase === "playing" && (
+              <div className="world-bottom">
+                {/* Subtitles. With Hina, her own line is the subtitle. */}
+                {!isCompanion && narration && (
+                  <div className={`subtitle ${speaking ? "speaking" : ""}`}>
+                    <p className="subtitle-jp" lang="ja">
+                      {narration.japanese}
+                    </p>
+                    {feedback && answersFreely && (
+                      <p className={`subtitle-feedback ${feedback.ok ? "ok" : "no"}`}>{feedback.text}</p>
+                    )}
+                  </div>
+                )}
+
+                {isCompanion && companionLine && (
+                  <div className="companion-line">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="companion-avatar" src={COMPANION_IMAGE} alt="" />
+                    <div className="companion-speech">
+                      <span className="companion-name">{COMPANION_NAME}</span>
+                      <Narration
+                        tokens={companionLine.tokens}
+                        english={companionLine.replyEn}
+                        savedSurfaces={savedSurfaces}
+                        onSaveWord={handleSaveWord}
+                        englishAlwaysOn
+                        onReplay={() => {
+                          steerTo(COMPANION_TALKING);
+                          hinaSays(companionLine);
+                        }}
+                        speaking={speaking}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Beginner rungs. The world is open-ended here even in a
+                    scripted world — a beginner cannot hit a scripted
+                    objective, and the reward must never be gated behind
+                    competence. */}
+                {!isCompanion && level.mode !== "free" && (
+                  <>
+                    {level.mode === "sentence" && sentence ? (
+                      <>
+                        <SentenceCard
+                          challenge={sentence}
+                          step={sentenceStep}
+                          state={sentenceState}
+                          heard={answer}
+                          romaji={level.romaji}
+                          speaking={speaking}
+                          transforming={transforming}
+                          onReplay={() =>
+                            speak(
+                              sentenceStep < sentenceWords.length
+                                ? sentenceWords[sentenceStep].kana
+                                : sentence.sentenceKana,
+                            )
+                          }
+                          onTyped={saySentence}
+                          mic={
+                            <MicButton
+                              onResult={(text) => setAnswer(text)}
+                              onSpeechEnd={() => {
+                                void saySentence(answer);
+                                setAnswer("");
+                              }}
+                              disabled={checking}
+                              autoStart={phase === "playing"}
+                              holdWhileSpeaking={speaking}
+                            />
+                          }
+                        />
+                      </>
+                    ) : level.mode === "choose" && choices ? (
+                      <ChoiceCards
+                        choices={choices}
+                        onPick={pickChoice}
+                        disabled={checking}
+                        onSpeak={speak}
+                      />
+                    ) : level.mode === "fill" && fillFrame ? (
+                      <FillCard
+                        frame={fillFrame}
+                        onPick={pickFill}
+                        disabled={checking}
+                        onSpeak={speak}
+                        showEnglish={level.support === "all" || level.support === "new"}
+                      />
+                    ) : (
+                      <div className="world-waiting">
+                        <span className="isekai-spinner small" aria-hidden="true" />
+                        {choosing ? "The world is choosing its words…" : "…"}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {answersFreely && (
+                  <div className="world-answer">
+                    {isCompanion ? (
+                      !companionLine && (
+                        <div className="isekai-objective">
+                          <div className="label">Say anything to {COMPANION_NAME}, in Japanese</div>
+                          <div className="objective-en">She&rsquo;ll answer — and the world moves with her.</div>
+                        </div>
+                      )
+                    ) : isFreeform ? (
+                      <div className="isekai-objective">
+                        <div className="label">Your turn — describe anything, in Japanese</div>
+                        <div className="objective-en">
+                          What happens next in your world? A creature, the weather, a new place — anything.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="isekai-objective">
+                        <div className="objective-top">
+                          <div className="label">Your turn — say it in Japanese</div>
+                          <div className="isekai-progress-steps">
+                            {scenario!.steps.map((_, i) => (
+                              <span
+                                key={i}
+                                className={`step ${i < stepIndex ? "done" : i === stepIndex ? "active" : ""}`}
+                              >
+                                {i < stepIndex ? <CheckIcon /> : i + 1}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="objective-en">{step!.objectiveEn}</div>
+                        <div className="objective-hint">
+                          <span>hint</span>
+                          {step!.hintJp}
+                        </div>
+                      </div>
+                    )}
+
+                    <form
+                      className="isekai-input-row"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void submitAnswer();
+                      }}
+                    >
+                      <input
+                        type="text"
+                        className="isekai-input"
+                        placeholder={level.inputHint}
+                        value={answer}
+                        onChange={(e) => setAnswer(e.target.value)}
+                        disabled={checking}
+                        lang="ja"
+                      />
+                      <MicButton
+                        onResult={(text) => setAnswer(text)}
+                        onSpeechEnd={() => void submitAnswer()}
+                        disabled={checking}
+                        autoStart={phase === "playing"}
+                        holdWhileSpeaking={speaking}
+                      />
+                      <button
+                        type="submit"
+                        className="isekai-submit"
+                        disabled={checking || !answer.trim()}
+                        aria-label="Submit answer"
+                      >
+                        {checking ? <span className="isekai-spinner small" aria-hidden="true" /> : <SendIcon />}
+                      </button>
+                    </form>
+
+                    {feedback && !feedback.ok && (
+                      <div className="isekai-feedback no">
+                        <RetryIcon />
+                        {feedback.text}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          {/* Everything that is not the world: the ladder, the narrator's
+              words to hover and save, and your vocabulary. Slides in over the
+              world's edge rather than shrinking it. */}
+          <aside className="world-panel" inert={!panelOpen}>
+            <div className="world-panel-head">
+              <span>Your journey</span>
+              <button type="button" className="world-panel-close" onClick={() => setPanelOpen(false)} aria-label="Close">
+                ×
+              </button>
+            </div>
+
+            {phase === "playing" && levelPicker}
+
+            {!isCompanion && narration && (
+              <Narration
+                tokens={narration.tokens}
+                english={narration.english}
+                savedSurfaces={savedSurfaces}
+                onSaveWord={handleSaveWord}
+                onReplay={() => speak(narration.japanese)}
+                speaking={speaking}
+              />
+            )}
+            {!isCompanion && narrating && !narration && (
+              <div className="narration narration-loading">
+                <span className="isekai-spinner small" aria-hidden="true" />
+                The world is finding its words…
+              </div>
             )}
 
-            {phase !== "connecting" && phase !== "starting" && (
-              reviewing ? (
-                <VocabReview
-                  entries={vocab}
-                  onUpdated={setVocab}
-                  onClose={() => setReviewing(false)}
-                  onSpeak={speak}
-                />
-              ) : (
-                <VocabPanel
-                  entries={vocab}
-                  onRemove={handleRemoveWord}
-                  onSpeak={speak}
-                  onReview={() => setReviewing(true)}
-                />
-              )
+            {reviewing ? (
+              <VocabReview
+                entries={vocab}
+                onUpdated={setVocab}
+                onClose={() => setReviewing(false)}
+                onSpeak={speak}
+              />
+            ) : (
+              <VocabPanel
+                entries={vocab}
+                onRemove={handleRemoveWord}
+                onSpeak={speak}
+                onReview={() => setReviewing(true)}
+              />
+            )}
+
+            {phase === "playing" && (
+              <button className="isekai-finish" onClick={() => setPhase("complete")}>
+                {isCompanion ? "End the walk" : "Finish, and see your story"}
+              </button>
             )}
 
             {session.error && <div className="isekai-error">{session.error}</div>}
-          </div>
+          </aside>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Development only: stands in for the Orbis stream during a rehearsal. Shows
+ * the world's artwork and, above it, the exact prompt Orbis would have been
+ * steered with — so a take can be practised, and the steering read, for free.
+ */
+function RehearsalWorld({ scenarioId, prompt, running }: { scenarioId: string; prompt: string; running: boolean }) {
+  const art = ["park", "classroom", "night-city"].includes(scenarioId)
+    ? `/art/${scenarioId}.webp`
+    : scenarioId === "companion"
+      ? COMPANION_IMAGE
+      : "/art/hero.webp";
+  return (
+    <div className="player rehearsal-world">
+      {running && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="rehearsal-art" src={art} alt="" />
+      )}
+      {running && prompt && (
+        <div className="rehearsal-prompt">
+          <span>Rehearsal · Orbis would be steered with</span>
+          {prompt}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SoundOnIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 5 6 9H2v6h4l5 4V5Z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+    </svg>
+  );
+}
+
+function SoundOffIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 5 6 9H2v6h4l5 4V5Z" />
+      <path d="m22 9-6 6M16 9l6 6" />
+    </svg>
   );
 }
 
@@ -1392,7 +1756,7 @@ type MinimalSpeechRecognition = {
   stop: () => void;
   onresult: ((event: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
 };
 type SpeechRecognitionCtor = new () => MinimalSpeechRecognition;
 
@@ -1417,6 +1781,10 @@ function MicButton({
   const [hearing, setHearing] = useState(false);
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
   const armedRef = useRef(false);
+  // Errors in a row since the last thing heard. Without a limit, a denied
+  // permission or a browser whose speech service always fails (Brave) would
+  // error, restart and error again forever.
+  const failures = useRef(0);
   const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // True while our own TTS is talking. Without this the microphone hears the
@@ -1465,6 +1833,7 @@ function MicButton({
       const text = last?.[0]?.transcript?.trim() ?? "";
       if (!text) return;
 
+      failures.current = 0;
       setHearing(true);
       handlers.current.onResult(text);
 
@@ -1479,7 +1848,19 @@ function MicButton({
       }
     };
 
-    recognition.onerror = () => setHearing(false);
+    recognition.onerror = (event) => {
+      setHearing(false);
+      // Silence is not a failure: Chrome reports "no-speech" every few
+      // seconds of quiet, and the world is meant to be sat in quietly.
+      if (event?.error === "no-speech" || event?.error === "aborted") return;
+      failures.current += 1;
+      const fatal = event?.error === "not-allowed" || event?.error === "service-not-allowed" || event?.error === "audio-capture";
+      // Stand down; the typed box is always there.
+      if (fatal || failures.current >= 3) {
+        armedRef.current = false;
+        setArmed(false);
+      }
+    };
     recognition.onend = () => {
       setHearing(false);
       // Browsers cut the stream every ~60s; restart unless we were stopped.
