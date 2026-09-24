@@ -3,7 +3,6 @@
 import { ReactorView } from "@reactor-team/js-sdk";
 
 type OrbisPlayerProps = {
-  connected?: boolean;
   muted: boolean;
   runStarted: boolean;
   status: string;
