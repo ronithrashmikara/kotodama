@@ -17,8 +17,13 @@ import {
   LEVELS,
   loadRung,
   nextRung,
+  rungBrief,
   saveRung,
 } from "@/lib/levels";
+import { DreamReel } from "@/components/dream-reel";
+import { createMomentRecorder, type DreamMoment, type MomentRecorder } from "@/lib/dream-moments";
+import { matchesSentenceEn, matchesWordEn } from "@/lib/english";
+import { hasLearnChoice, LEARN, loadLearn, saveLearn, type Learn } from "@/lib/learn";
 import { ORBIS_MODEL_NAME, ORBIS_TRACKS, requestReactorJwt } from "@/lib/orbis";
 import {
   buildChoiceScenario,
@@ -52,6 +57,8 @@ type CheckResponse = {
   feedback: string;
   correctedJapanese: string;
   sceneAddEn?: string;
+  /** What the player's sentence means, in English. */
+  meaning?: string;
   method?: string;
 };
 
@@ -100,6 +107,20 @@ type Phase = "pick" | "connecting" | "starting" | "playing" | "complete";
 function asChange(fragment: string): string {
   const text = fragment.trim().replace(/[.。]+$/, "");
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+}
+
+/**
+ * The meaning a spell turns the player's words into (English, or Japanese for
+ * someone learning English): no quotes, a capital, and a flourish.
+ */
+function tidyMeaning(text?: string): string | undefined {
+  const t = text?.trim().replace(/^["“'‘「]+|["”'’」]+$/g, "").trim();
+  if (!t) return undefined;
+  const capital = `${t.charAt(0).toUpperCase()}${t.slice(1)}`;
+  // A whole sentence lands with a bang; a single word ("night") stays a word.
+  if (!/\s/.test(capital) || /[?？]$/.test(capital)) return capital;
+  const bang = /[぀-ヿ一-龯]/.test(capital) ? "！" : "!";
+  return `${capital.replace(/[.。!！]+$/, "")}${bang}`;
 }
 
 /**
@@ -188,7 +209,31 @@ function IsekaiSession({
   const [reviewing, setReviewing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
 
+  // Which language this world is for (lib/learn.ts). Asked each time a world is
+  // picked, remembered as the next default.
+  const [learn, setLearn] = useState<Learn>("ja");
+  const [pendingWorld, setPendingWorld] = useState<Scenario | null>(null);
+  const [learnRemembered, setLearnRemembered] = useState(false);
+  useEffect(() => {
+    setLearn(loadLearn());
+    setLearnRemembered(hasLearnChoice());
+  }, []);
+  const learnRef = useRef(learn);
+  learnRef.current = learn;
+  const lang = LEARN[learn];
+
+  // The dream reel: key moments recorded as they happen, and the words learned
+  // on the way, turned into a short shareable video when the dream ends.
+  const recorder = useRef<MomentRecorder | null>(null);
+  recorder.current ??= createMomentRecorder();
+  const sessionWords = useRef<{ word: string; meaning: string }[]>([]);
+  const [dreamMoments, setDreamMoments] = useState<DreamMoment[] | null>(null);
+  const noteWord = (word: string, meaning: string) => {
+    if (!sessionWords.current.some((w) => w.word === word)) sessionWords.current.push({ word, meaning });
+  };
+
   const level = getLevel(levelId);
+  const brief = rungBrief(level, learn);
   const isFreeform = scenario?.id === "freeform";
   const isCompanion = scenario?.id === "companion";
   const step = scenario ? scenario.steps[stepIndex] : null;
@@ -304,7 +349,8 @@ function IsekaiSession({
       }
       const last = index === queue.length - 1;
       try {
-        const audio = new Audio(`/api/tts?text=${encodeURIComponent(queue[index++])}`);
+        // Every spoken line is in the language being learned, in its own voice.
+        const audio = new Audio(`/api/tts?lang=${learnRef.current}&text=${encodeURIComponent(queue[index++])}`);
         audioRef.current = audio;
         audio.onplaying = () => {
           if (audibleTimer.current) clearTimeout(audibleTimer.current);
@@ -344,9 +390,17 @@ function IsekaiSession({
     (
       strength: MagicStrength,
       words?: string,
-      { sound = strength, onReveal }: { sound?: MagicStrength; onReveal?: () => void } = {},
+      {
+        sound = strength,
+        onReveal,
+        meaning,
+      }: { sound?: MagicStrength; onReveal?: () => void; meaning?: string } = {},
     ) => {
-      setMagic({ id: Date.now(), strength, words, onReveal });
+      const said = tidyMeaning(meaning);
+      setMagic({ id: Date.now(), strength, words, meaning: said, onReveal });
+      // A change the player's words made is a moment for the dream reel; the
+      // steer goes out right after this, so its clip covers the change.
+      if (words && strength !== "small") recorder.current?.capture({ said: words, meaning: said, strength });
       const seconds = playMagic(sound, scenarioRef.current?.id);
       // Our own music must not reach the recogniser as the player's voice.
       if (seconds) {
@@ -359,14 +413,14 @@ function IsekaiSession({
   );
 
   const narrateScene = useCallback(
-    async (scene: string, aloud = true) => {
+    async (scene: string, aloud = true, change?: string) => {
       if (!scene.trim()) return;
       setNarrating(true);
       try {
         const res = await fetch("/api/narrate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scene, level: levelId }),
+          body: JSON.stringify({ scene, level: levelId, change, learn: learnRef.current }),
         });
         if (!res.ok) {
           setNarration(null);
@@ -390,8 +444,11 @@ function IsekaiSession({
   const hinaSays = useCallback(
     (reply: CompanionReply) => {
       // Beginners hear the English echo too; past that it stays on screen
-      // only, so the Japanese keeps carrying the turn.
-      const lines = levelRef.current <= 2 ? [reply.reply, reply.replyEn] : [reply.reply];
+      // only, so the Japanese keeps carrying the turn. Someone learning English
+      // reads her Japanese echo instead: spoken in her English voice, it would
+      // be the one line she mispronounces.
+      const echo = levelRef.current <= 2 && learnRef.current === "ja";
+      const lines = echo ? [reply.reply, reply.replyEn] : [reply.reply];
       speakSequence(lines, { onEnding: () => steerTo(COMPANION_LISTENING) });
     },
     [speakSequence, steerTo],
@@ -416,6 +473,7 @@ function IsekaiSession({
               .map((e) => e.label || e.said || "")
               .filter(Boolean)
               .slice(-4),
+            learn: learnRef.current,
           }),
         });
         if (!res.ok) {
@@ -448,6 +506,7 @@ function IsekaiSession({
           body: JSON.stringify({
             scene,
             recent: sceneEventsRef.current.filter((e) => e.source === "you").slice(-3).map((e) => e.text),
+            learn: learnRef.current,
           }),
         });
         if (!res.ok) {
@@ -476,6 +535,7 @@ function IsekaiSession({
           body: JSON.stringify({
             scene,
             recent: sceneEventsRef.current.filter((e) => e.source === "you").slice(-3).map((e) => e.text),
+            learn: learnRef.current,
           }),
         });
         if (!res.ok) {
@@ -569,7 +629,9 @@ function IsekaiSession({
         // On screen only. Spoken, it would hold the mic every twenty seconds
         // for the length of a line nobody asked for — and with Hina, the
         // narrator's voice would be mistaken for hers with her mouth shut.
-        if (scenario.id !== "companion") void narrateRef.current(composeScene(scenario.basePrompt, next), false);
+        if (scenario.id !== "companion") {
+          void narrateRef.current(composeScene(scenario.basePrompt, next), false, drift.sceneAddEn);
+        }
       } catch {
         // A missed beat is harmless; the next tick tries again.
       } finally {
@@ -647,8 +709,8 @@ function IsekaiSession({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           greeting
-            ? { greeting: true, scene: runningScene, level: levelId }
-            : { said, scene: runningScene, level: levelId, history: conversation },
+            ? { greeting: true, scene: runningScene, level: levelId, learn: learnRef.current }
+            : { said, scene: runningScene, level: levelId, history: conversation, learn: learnRef.current },
         ),
       });
       if (!res.ok) {
@@ -675,7 +737,7 @@ function IsekaiSession({
         );
         // One clear change on top of the talking she is already doing — the
         // world around her is not restated, per the Orbis prompt guide.
-        if (!greeting) castMagic("medium", said, { sound: "small" });
+        if (!greeting) castMagic("medium", said, { sound: "small", meaning: data.heardMeaning });
         steerTo(whileCompanionTalks(data.sceneAddEn));
       }
       hinaSays(data);
@@ -726,6 +788,9 @@ function IsekaiSession({
     setNarration(null);
     setRungHistory([]);
     setPanelOpen(false);
+    recorder.current?.reset();
+    sessionWords.current = [];
+    setDreamMoments(null);
     // The かな card is the choose rung by name, so picking it means that rung
     // however far up the ladder you had climbed.
     if (chosen.id === "choices") setLevelId(1);
@@ -770,15 +835,39 @@ function IsekaiSession({
     await session.disconnectSession();
   };
 
+  /**
+   * The dream becomes a story. Clips still recording get their last seconds
+   * (at most ~10), then the world is let go — Orbis bills every second it is
+   * held, and the story screen does not need it — and the moments become the
+   * dream reel. `ended`: the session is already gone (the five-minute cap).
+   */
+  const finishWorld = async (ended = false) => {
+    sequenceEnding.current = null;
+    audioRef.current?.pause();
+    setSpeaking(false);
+    setMagic(null);
+    setPhase("complete");
+    const rec = recorder.current;
+    if (ended) rec?.stop();
+    setDreamMoments(rec ? await rec.settle() : []);
+    if (!ended) await session.disconnectSession();
+  };
+  const finishRef = useRef(finishWorld);
+  finishRef.current = finishWorld;
+  // Leaving a world you changed shows you the story of it; leaving one you
+  // never touched just leaves.
+  const leaveOrFinish = () =>
+    void ((recorder.current?.list().length ?? 0) > 0 ? finishWorld() : leaveWorld());
+
   /** Steer the world and let it land before the next card. Shared by rungs 1 and 2. */
-  const applyTurn = (sceneAddEn: string, said: string) => {
+  const applyTurn = (sceneAddEn: string, said: string, meaning?: string) => {
     if (!scenario) return;
     const next = addEvent(sceneEventsRef.current, { text: sceneAddEn, source: "you", said });
     setSceneEvents(next);
     setWorldEvent(null);
     setTurns((t) => t + 1);
     setCorrectTurns((c) => c + 1);
-    castMagic("medium", said);
+    castMagic("medium", said, { meaning });
     steerTo(asChange(sceneAddEn));
     holdTurn(1200);
   };
@@ -804,7 +893,10 @@ function IsekaiSession({
     setTransforming(true);
     setTurnHold(true);
     // The narrator describes the new world once the mist has cleared on it.
-    castMagic("big", challenge.sentenceKana, { onReveal: () => void narrateRef.current(challenge.sceneEn) });
+    castMagic("big", challenge.sentenceKana, {
+      meaning: challenge.sentenceEn,
+      onReveal: () => void narrateRef.current(challenge.sceneEn),
+    });
     steerTo(challenge.changeEn);
 
     const release = () => {
@@ -838,7 +930,7 @@ function IsekaiSession({
    * is judged on the device alone.
    */
   const heardAs = async (said: string, target: string, english?: string) => {
-    if (!/[぀-ヿ一-龯]/.test(said)) return false;
+    if (learnRef.current !== "ja" || !/[぀-ヿ一-龯]/.test(said)) return false;
     judging.current = true;
     setSentenceState("checking");
     try {
@@ -860,10 +952,13 @@ function IsekaiSession({
     if (!sentence || !scenario || transforming || judging.current) return;
     if (sentenceState === "ok" || !said.trim()) return;
     const asked = sentence;
+    const english = learn === "en";
 
     if (sentenceStep < sentenceWords.length) {
       const word = sentenceWords[sentenceStep];
-      const ok = matchesWord(said, word) || (await heardAs(said, word.kana, word.english));
+      const ok =
+        (english ? matchesWordEn(said, word) : matchesWord(said, word)) ||
+        (await heardAs(said, word.kana, word.english));
       // They may have left, or the world moved on, while that was checked.
       if (sentenceRef.current !== asked) return;
       if (!ok) {
@@ -874,8 +969,11 @@ function IsekaiSession({
         return;
       }
       setSentenceState("ok");
-      castMagic("small");
-      setVocab(saveWord({ surface: word.kana, reading: word.kana, meaning: word.english ?? "" }));
+      castMagic("small", word.kana, { meaning: word.english });
+      // An English word's "reading" is how it sounds, in katakana.
+      const reading = english ? word.romaji || word.kana : word.kana;
+      setVocab(saveWord({ surface: word.kana, reading, meaning: word.english ?? "" }));
+      noteWord(word.kana, word.english ?? "");
       const nextStep = sentenceStep + 1;
       const nextTarget = nextStep < sentenceWords.length ? sentenceWords[nextStep].kana : sentence.sentenceKana;
       setTimeout(() => {
@@ -887,7 +985,7 @@ function IsekaiSession({
     }
 
     const ok =
-      matchesSentence(said, sentenceWords).ok ||
+      (english ? matchesSentenceEn(said, sentenceWords) : matchesSentence(said, sentenceWords)).ok ||
       (await heardAs(said, sentence.sentenceKana, sentence.sentenceEn));
     if (sentenceRef.current !== asked) return;
     if (!ok) {
@@ -910,8 +1008,9 @@ function IsekaiSession({
     recordTurn(true);
     setStreak((s) => s + 1);
     setVocab(saveWord({ surface: option.kana, reading: option.kana, meaning: option.english }));
+    noteWord(option.kana, option.english);
     speak(said);
-    applyTurn(option.sceneAddEn, said);
+    applyTurn(option.sceneAddEn, said, fillFrame.frameEn ? fillFrame.frameEn.replace("___", option.english) : option.english);
   };
 
   const pickChoice = (choice: Choice) => {
@@ -919,8 +1018,9 @@ function IsekaiSession({
     setChoices(null);
     recordTurn(true);
     setVocab(saveWord({ surface: choice.kana, reading: choice.kana, meaning: choice.english }));
+    noteWord(choice.kana, choice.english);
     speak(choice.kana);
-    applyTurn(choice.sceneAddEn, choice.kana);
+    applyTurn(choice.sceneAddEn, choice.kana, choice.english);
   };
 
   const submitAnswer = async () => {
@@ -935,13 +1035,14 @@ function IsekaiSession({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           isFreeform
-            ? { learnerText: answer, freeform: true, sceneContext: runningScene, level: levelId }
+            ? { learnerText: answer, freeform: true, sceneContext: runningScene, level: levelId, learn }
             : {
                 learnerText: answer,
                 objectiveEn: step!.objectiveEn,
-                sampleAnswer: step!.sampleAnswer,
-                requiredAll: step!.requiredAll,
+                sampleAnswer: learn === "en" ? step!.sampleAnswerEn : step!.sampleAnswer,
+                requiredAll: learn === "en" ? step!.requiredAllEn : step!.requiredAll,
                 level: levelId,
+                learn,
               },
         ),
       });
@@ -950,9 +1051,9 @@ function IsekaiSession({
         : isFreeform
           ? { correct: false, feedback: "Something went wrong — try again.", correctedJapanese: "" }
           : {
-              correct: localCheck(step!, answer).correct,
+              correct: localCheck(step!, answer, learn).correct,
               feedback: "Offline check.",
-              correctedJapanese: step!.sampleAnswer,
+              correctedJapanese: learn === "en" ? step!.sampleAnswerEn : step!.sampleAnswer,
             };
 
       setTurns((t) => t + 1);
@@ -969,19 +1070,19 @@ function IsekaiSession({
         const nextScene = scenario ? composeScene(scenario.basePrompt, nextEvents) : runningScene;
         setSceneEvents(nextEvents);
         setWorldEvent(null);
-        castMagic("medium", answer.trim());
+        castMagic("medium", answer.trim(), { meaning: data.meaning });
         if (addition) steerTo(asChange(addition));
         setAnswer("");
 
         // On success the narrator describing the changed world is the reward,
         // so it speaks instead of the correction — two voices would collide.
-        void narrateScene(nextScene);
+        void narrateScene(nextScene, true, addition);
 
         if (!isFreeform) {
           if (scenario && stepIndex + 1 < scenario.steps.length) {
             setTimeout(() => setStepIndex((i) => i + 1), 900);
           } else {
-            setTimeout(() => setPhase("complete"), 900);
+            setTimeout(() => void finishRef.current(), 900);
           }
         }
       } else {
@@ -1076,7 +1177,7 @@ function IsekaiSession({
       <p className="level-note">
         {levelId < FIRST_FREE_LEVEL_ID ? (
           <>
-            No Japanese needed. It adjusts itself as you play.{" "}
+            No {lang.target} needed. It adjusts itself as you play.{" "}
             <button
               type="button"
               className="level-jump"
@@ -1085,7 +1186,7 @@ function IsekaiSession({
                 saveRung(FIRST_FREE_LEVEL_ID);
               }}
             >
-              I already know some Japanese →
+              I already know some {lang.target} →
             </button>
           </>
         ) : (
@@ -1108,7 +1209,23 @@ function IsekaiSession({
               <span>{session.error}</span>
             </div>
           )}
-          <ScenarioPicker onPick={enterScenario} />
+          <ScenarioPicker onPick={setPendingWorld} />
+          {pendingWorld && (
+            <LearnChooser
+              world={pendingWorld}
+              current={learnRemembered ? learn : null}
+              onClose={() => setPendingWorld(null)}
+              onChoose={(chosen) => {
+                const world = pendingWorld;
+                setLearn(chosen);
+                learnRef.current = chosen;
+                saveLearn(chosen);
+                setLearnRemembered(true);
+                setPendingWorld(null);
+                void enterScenario(world);
+              }}
+            />
+          )}
           {children}
         </>
       )}
@@ -1148,7 +1265,7 @@ function IsekaiSession({
           </div>
 
           <header className="world-top">
-            <button className="isekai-leave" onClick={() => void leaveWorld()}>
+            <button className="isekai-leave" onClick={leaveOrFinish}>
               <ArrowLeftIcon /> Leave
             </button>
             <span className="isekai-title">
@@ -1266,7 +1383,7 @@ function IsekaiSession({
                   >
                     Dream again
                   </button>
-                  <button className="isekai-leave" onClick={() => setPhase("complete")}>
+                  <button className="isekai-leave" onClick={() => void finishWorld(true)}>
                     See your story
                   </button>
                 </div>
@@ -1278,6 +1395,21 @@ function IsekaiSession({
                 <SparkleIcon />
                 <h2>You shaped this world</h2>
                 <p>The world moved every time your words landed.</p>
+
+                {/* Your dream as a short video to keep and share, and the
+                    moments it is made of. */}
+                {dreamMoments === null ? (
+                  <p className="dream-gathering">
+                    <span className="isekai-spinner small" aria-hidden="true" /> Gathering your memories…
+                  </p>
+                ) : (
+                  <DreamReel
+                    moments={dreamMoments}
+                    title={scenario?.titleEn ?? "Yume"}
+                    lang={learn}
+                    words={sessionWords.current}
+                  />
+                )}
                 <div className="isekai-stats">
                   <div className="stat">
                     <span className="stat-value">{correctTurns}</span>
@@ -1325,9 +1457,14 @@ function IsekaiSession({
                 {/* Subtitles. With Hina, her own line is the subtitle. */}
                 {!isCompanion && narration && (
                   <div className={`subtitle ${speaking ? "speaking" : ""}`}>
-                    <p className="subtitle-jp" lang="ja">
+                    <p className="subtitle-jp" lang={lang.targetTag}>
                       {narration.japanese}
                     </p>
+                    {narration.english && (
+                      <p className="subtitle-en" lang={lang.helperTag}>
+                        {narration.english}
+                      </p>
+                    )}
                     {feedback && answersFreely && (
                       <p className={`subtitle-feedback ${feedback.ok ? "ok" : "no"}`}>{feedback.text}</p>
                     )}
@@ -1346,6 +1483,7 @@ function IsekaiSession({
                         savedSurfaces={savedSurfaces}
                         onSaveWord={handleSaveWord}
                         englishAlwaysOn
+                        learn={learn}
                         onReplay={() => {
                           steerTo(COMPANION_TALKING);
                           hinaSays(companionLine);
@@ -1370,6 +1508,7 @@ function IsekaiSession({
                           state={sentenceState}
                           heard={answer}
                           romaji={level.romaji}
+                          learn={learn}
                           speaking={speaking}
                           transforming={transforming}
                           onReplay={() =>
@@ -1393,6 +1532,7 @@ function IsekaiSession({
                               disabled={checking}
                               autoStart={phase === "playing"}
                               holdWhileSpeaking={audible}
+                              speech={lang.speech}
                             />
                           }
                         />
@@ -1403,6 +1543,7 @@ function IsekaiSession({
                         onPick={pickChoice}
                         disabled={checking}
                         onSpeak={speak}
+                        learn={learn}
                       />
                     ) : level.mode === "fill" && fillFrame ? (
                       <FillCard
@@ -1411,6 +1552,7 @@ function IsekaiSession({
                         disabled={checking}
                         onSpeak={speak}
                         showEnglish={level.support === "all" || level.support === "new"}
+                        learn={learn}
                       />
                     ) : (
                       <div className="world-waiting">
@@ -1426,13 +1568,15 @@ function IsekaiSession({
                     {isCompanion ? (
                       !companionLine && (
                         <div className="isekai-objective">
-                          <div className="label">Say anything to {COMPANION_NAME}, in Japanese</div>
+                          <div className="label">
+                            Say anything to {COMPANION_NAME}, in {lang.target}
+                          </div>
                           <div className="objective-en">She&rsquo;ll answer — and the world moves with her.</div>
                         </div>
                       )
                     ) : isFreeform ? (
                       <div className="isekai-objective">
-                        <div className="label">Your turn — describe anything, in Japanese</div>
+                        <div className="label">Your turn — describe anything, in {lang.target}</div>
                         <div className="objective-en">
                           What happens next in your world? A creature, the weather, a new place — anything.
                         </div>
@@ -1440,7 +1584,7 @@ function IsekaiSession({
                     ) : (
                       <div className="isekai-objective">
                         <div className="objective-top">
-                          <div className="label">Your turn — say it in Japanese</div>
+                          <div className="label">Your turn — say it in {lang.target}</div>
                           <div className="isekai-progress-steps">
                             {scenario!.steps.map((_, i) => (
                               <span
@@ -1452,10 +1596,13 @@ function IsekaiSession({
                             ))}
                           </div>
                         </div>
-                        <div className="objective-en">{step!.objectiveEn}</div>
-                        <div className="objective-hint">
+                        {/* Asked in the helper language, hinted in the one being learned. */}
+                        <div className="objective-en" lang={lang.helperTag}>
+                          {learn === "en" ? step!.objectiveJa : step!.objectiveEn}
+                        </div>
+                        <div className="objective-hint" lang={lang.targetTag}>
                           <span>hint</span>
-                          {step!.hintJp}
+                          {learn === "en" ? step!.hintEn : step!.hintJp}
                         </div>
                       </div>
                     )}
@@ -1470,11 +1617,11 @@ function IsekaiSession({
                       <input
                         type="text"
                         className="isekai-input"
-                        placeholder={level.inputHint}
+                        placeholder={brief.inputHint}
                         value={answer}
                         onChange={(e) => setAnswer(e.target.value)}
                         disabled={checking}
-                        lang="ja"
+                        lang={lang.targetTag}
                       />
                       <MicButton
                         onResult={(text) => {
@@ -1485,6 +1632,7 @@ function IsekaiSession({
                         disabled={checking}
                         autoStart={phase === "playing"}
                         holdWhileSpeaking={audible}
+                        speech={lang.speech}
                       />
                       <button
                         type="submit"
@@ -1529,6 +1677,7 @@ function IsekaiSession({
                 onSaveWord={handleSaveWord}
                 onReplay={() => speak(narration.japanese)}
                 speaking={speaking}
+                learn={learn}
               />
             )}
             {!isCompanion && narrating && !narration && (
@@ -1555,7 +1704,7 @@ function IsekaiSession({
             )}
 
             {phase === "playing" && (
-              <button className="isekai-finish" onClick={() => setPhase("complete")}>
+              <button className="isekai-finish" onClick={() => void finishWorld()}>
                 {isCompanion ? "End the walk" : "Finish, and see your story"}
               </button>
             )}
@@ -1661,13 +1810,13 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
             <span className="hero-badge-icon">
               <GamepadIcon />
             </span>
-            <span className="hero-badge-text">Learn Japanese by living in it, not a textbook</span>
+            <span className="hero-badge-text">Learn Japanese — or English — by living in it, not a textbook</span>
             <span className="hero-badge-arrow">
               <ArrowRightIcon />
             </span>
           </a>
           <p className="isekai-tagline">
-            Step into a world you actually want to be in — speak Japanese to it, and it moves.
+            Step into a world you actually want to be in — speak Japanese (or English) to it, and it moves.
           </p>
           <span className="hero-version">
             <span className="hero-version-dot" />
@@ -1777,7 +1926,7 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
               ひな <em>Walk and talk with Hina</em>
             </span>
             <span className="companion-feature-text">
-              No objectives, no grading — just talk to her in Japanese. She answers out
+              No objectives, no grading — just talk to her in Japanese or English. She answers out
               loud, and the world changes around you as she does.
             </span>
             <span className="companion-feature-cta">
@@ -1787,6 +1936,77 @@ function ScenarioPicker({ onPick }: { onPick: (s: Scenario) => void }) {
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * Before a world opens: which language is this dream for? Yume teaches both
+ * ways — English speakers learn Japanese, Japanese speakers learn English — and
+ * the last choice is the one already lit.
+ */
+function LearnChooser({
+  world,
+  current,
+  onChoose,
+  onClose,
+}: {
+  world: Scenario;
+  /** Last time's choice, if there was one. */
+  current: Learn | null;
+  onChoose: (learn: Learn) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="learn-chooser" role="dialog" aria-modal="true" aria-labelledby="learn-title" onClick={onClose}>
+      <div className="learn-card" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="learn-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+        <span className="learn-world">
+          <span lang="ja">{world.titleJp}</span> · {world.titleEn}
+        </span>
+        <h2 id="learn-title">
+          What do you want to learn?
+          <span lang="ja">なにを まなぶ？</span>
+        </h2>
+        <div className="learn-options">
+          <button
+            type="button"
+            className={`learn-option learn-ja ${current === "ja" ? "last" : ""}`}
+            onClick={() => onChoose("ja")}
+            autoFocus={current !== "en"}
+          >
+            <span className="learn-big" lang="ja">
+              にほんご
+            </span>
+            <span className="learn-name">Japanese</span>
+            <span className="learn-desc">Speak Japanese to the world. Help comes in English.</span>
+          </button>
+          <button
+            type="button"
+            className={`learn-option learn-en ${current === "en" ? "last" : ""}`}
+            onClick={() => onChoose("en")}
+            autoFocus={current === "en"}
+          >
+            <span className="learn-big">English</span>
+            <span className="learn-name" lang="ja">
+              えいご
+            </span>
+            <span className="learn-desc" lang="ja">
+              えいごで せかいに はなしかけよう。ヒントは にほんごで。
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1928,12 +2148,15 @@ function MicButton({
   disabled,
   autoStart,
   holdWhileSpeaking,
+  speech = "ja-JP",
 }: {
   onResult: (text: string) => void;
   onSpeechEnd: () => void;
   disabled: boolean;
   autoStart: boolean;
   holdWhileSpeaking: boolean;
+  /** The recogniser's language: whatever the player is learning. */
+  speech?: string;
 }) {
   const [armed, setArmed] = useState(false);
   const [hearing, setHearing] = useState(false);
@@ -1950,6 +2173,8 @@ function MicButton({
   // loop — burning Groq calls and steering the world off nonsense input.
   const holdRef = useRef(false);
   holdRef.current = holdWhileSpeaking;
+  const speechRef = useRef(speech);
+  speechRef.current = speech;
 
   // Handlers are installed once but fire seconds later, so they read the
   // latest callbacks from a ref rather than closing over stale ones.
@@ -1973,7 +2198,7 @@ function MicButton({
     if (!Ctor) return;
 
     const recognition = new Ctor();
-    recognition.lang = "ja-JP";
+    recognition.lang = speechRef.current;
     recognition.continuous = true;
     // Interim results give a live transcript as you speak, so the box visibly
     // reacts rather than staying blank until you finish a sentence.

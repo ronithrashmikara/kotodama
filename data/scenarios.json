@@ -10,6 +10,10 @@
         "hintJp": "ねこ・こうえん・います",
         "requiredAll": ["ねこ", "い"],
         "sampleAnswer": "こうえんに ねこが います。",
+        "objectiveJa": "こうえんに ねこが いるよ、と いってみよう。",
+        "hintEn": "cat · park · there is",
+        "sampleAnswerEn": "There is a cat in the park.",
+        "requiredAllEn": ["cat"],
         "sceneAdd": "a small fluffy cream-colored cat is sitting in the grass, looking around curiously"
       },
       {
@@ -17,6 +21,10 @@
         "hintJp": "いぬ・ねこの となり・います",
         "requiredAll": ["いぬ", "い"],
         "sampleAnswer": "いぬが ねこの となりに います。",
+        "objectiveJa": "ねこの となりに いぬが いるよ、と いってみよう。",
+        "hintEn": "dog · next to · cat",
+        "sampleAnswerEn": "A dog is next to the cat.",
+        "requiredAllEn": ["dog"],
         "sceneAdd": "a friendly golden-brown dog is sitting right next to the cat, both looking at each other"
       },
       {
@@ -24,6 +32,10 @@
         "hintJp": "てんき・きれい",
         "requiredAll": ["てんき", "きれい"],
         "sampleAnswer": "てんきは きれいです。",
+        "objectiveJa": "てんきが きれいだね、と いってみよう。",
+        "hintEn": "weather · beautiful",
+        "sampleAnswerEn": "The weather is beautiful.",
+        "requiredAllEn": ["weather"],
         "sceneAdd": "the sky is stunning, warm golden sunlight streaming through the cherry blossoms, sparkling light particles drifting in the air"
       },
       {
@@ -31,6 +43,10 @@
         "hintJp": "あめ・ふります",
         "requiredAll": ["あめ"],
         "sampleAnswer": "あめが ふります。",
+        "objectiveJa": "あめを ふらせよう。",
+        "hintEn": "rain · starts",
+        "sampleAnswerEn": "It starts to rain.",
+        "requiredAllEn": ["rain"],
         "sceneAdd": "gentle rain has started falling, the cat and dog now huddle together under a tree for shelter, raindrops visible in the golden light"
       }
     ]
@@ -46,6 +62,10 @@
         "hintJp": "せんせい・まえ・います",
         "requiredAll": ["せんせい", "い"],
         "sampleAnswer": "せんせいは まえに います。",
+        "objectiveJa": "まえに せんせいが たっているよ、と いってみよう。",
+        "hintEn": "teacher · stands · front",
+        "sampleAnswerEn": "A teacher stands at the front.",
+        "requiredAllEn": ["teacher"],
         "sceneAdd": "a kind-looking teacher in a soft cardigan is standing at the front by the chalkboard, smiling warmly"
       },
       {
@@ -53,6 +73,10 @@
         "hintJp": "がくせい・ほん・よみます",
         "requiredAll": ["がくせい", "ほん"],
         "sampleAnswer": "がくせいは つくえで ほんを よみます。",
+        "objectiveJa": "つくえで ほんを よむ せいとを だそう。",
+        "hintEn": "student · reads · book · desk",
+        "sampleAnswerEn": "A student reads a book at a desk.",
+        "requiredAllEn": ["student", "book"],
         "sceneAdd": "a student is sitting at a front-row desk, quietly reading an open book, sunlight falling across the page"
       },
       {
@@ -60,6 +84,10 @@
         "hintJp": "きょうしつ・しずか",
         "requiredAll": ["きょうしつ", "しずか"],
         "sampleAnswer": "きょうしつは とても しずかです。",
+        "objectiveJa": "きょうしつが とても しずかだね、と いってみよう。",
+        "hintEn": "classroom · very · quiet",
+        "sampleAnswerEn": "The classroom is very quiet.",
+        "requiredAllEn": ["quiet"],
         "sceneAdd": "the room is perfectly still and peaceful, only dust motes drifting slowly through the warm sunbeams"
       },
       {
@@ -67,6 +95,10 @@
         "hintJp": "ベル・なります",
         "requiredAll": ["ベル"],
         "sampleAnswer": "ベルが なります。",
+        "objectiveJa": "がっこうの ベルを ならそう。",
+        "hintEn": "bell · rings",
+        "sampleAnswerEn": "The school bell rings.",
+        "requiredAllEn": ["bell"],
         "sceneAdd": "a school bell chimes brightly, the teacher and the student both look up toward the window, the mood turns cheerful"
       }
     ]
@@ -82,6 +114,10 @@
         "hintJp": "つき・きれい",
         "requiredAll": ["つき", "きれい"],
         "sampleAnswer": "こんばんは つきが きれいです。",
+        "objectiveJa": "こんやは つきが きれいだね、と いってみよう。",
+        "hintEn": "moon · beautiful · tonight",
+        "sampleAnswerEn": "The moon is beautiful tonight.",
+        "requiredAllEn": ["moon"],
         "sceneAdd": "the full moon glows brighter and larger, its soft light bathing the whole street in silver"
       },
       {
@@ -89,6 +125,10 @@
         "hintJp": "ねこ・みち・あるきます",
         "requiredAll": ["ねこ", "みち"],
         "sampleAnswer": "ねこが みちを あるいています。",
+        "objectiveJa": "ねこが みちを あるいているよ、と いってみよう。",
+        "hintEn": "cat · walks · street",
+        "sampleAnswerEn": "A cat walks across the street.",
+        "requiredAllEn": ["cat"],
         "sceneAdd": "a small black cat is calmly walking across the cobblestone street beneath the lantern light"
       },
       {
@@ -96,6 +136,10 @@
         "hintJp": "まち・しずか",
         "requiredAll": ["まち", "しずか"],
         "sampleAnswer": "まちは とても しずかです。",
+        "objectiveJa": "まちが とても しずかだね、と いってみよう。",
+        "hintEn": "city · very · quiet",
+        "sampleAnswerEn": "The city is very quiet.",
+        "requiredAllEn": ["quiet"],
         "sceneAdd": "the street falls into a hushed, peaceful silence, only the faint sound of distant wind chimes"
       },
       {
@@ -103,6 +147,10 @@
         "hintJp": "さくら・かぜ",
         "requiredAll": ["さくら"],
         "sampleAnswer": "さくらの はなびらが かぜで とんでいます。",
+        "objectiveJa": "さくらの はなびらを かぜで とばそう。",
+        "hintEn": "cherry blossom · petals · fly",
+        "sampleAnswerEn": "Cherry blossom petals fly in the wind.",
+        "requiredAllEn": ["petal"],
         "sceneAdd": "cherry blossom petals are drifting gently through the night air, caught in the lantern light like glowing embers"
       }
     ]

@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 
 import type { SentenceChallenge } from "@/app/api/sentence/route";
+import { LEARN, type Learn } from "@/lib/learn";
 
 export type SentenceState = "waiting" | "checking" | "ok" | "retry";
 
@@ -14,6 +15,10 @@ export type SentenceState = "waiting" | "checking" | "ok" | "retry";
  *
  * The mic is already open, so there is nothing to press. The typed box is for
  * browsers without speech recognition and rooms too loud for it; romaji counts.
+ *
+ * Someone learning English gets the same card with an English sentence: the
+ * reading line shows how each word sounds in katakana, and the words are typed
+ * as themselves.
  */
 export function SentenceCard({
   challenge,
@@ -21,6 +26,7 @@ export function SentenceCard({
   state,
   heard,
   romaji,
+  learn = "ja",
   speaking,
   transforming,
   onReplay,
@@ -35,6 +41,7 @@ export function SentenceCard({
   heard?: string;
   /** Rungs 0-1 only; romaji is a scaffold with an expiry date. */
   romaji: boolean;
+  learn?: Learn;
   speaking: boolean;
   /** The sentence landed and the world is changing. */
   transforming: boolean;
@@ -47,6 +54,8 @@ export function SentenceCard({
   const words = challenge.parts.filter((p) => p.kind === "word");
   const whole = step >= words.length;
   const current = whole ? null : words[step];
+  const { targetTag, helperTag } = LEARN[learn];
+  const english = learn === "en";
 
   let wordIndex = -1;
 
@@ -56,7 +65,7 @@ export function SentenceCard({
         {transforming ? "Watch the world" : whole ? "Now say the whole sentence" : `Word ${step + 1} of ${words.length}`}
       </div>
 
-      <div className="sentence-strip" lang="ja">
+      <div className={`sentence-strip ${english ? "spaced" : ""}`} lang={targetTag}>
         {challenge.parts.map((part, i) => {
           if (part.kind === "particle") {
             return (
@@ -74,17 +83,21 @@ export function SentenceCard({
           );
         })}
       </div>
-      {challenge.sentenceEn && <div className="sentence-en">“{challenge.sentenceEn}”</div>}
+      {challenge.sentenceEn && (
+        <div className="sentence-en" lang={helperTag}>
+          “{challenge.sentenceEn}”
+        </div>
+      )}
 
       {!transforming && (
         <>
-          <div className="sentence-target" lang="ja">
+          <div className="sentence-target" lang={targetTag}>
             {current ? current.kana : challenge.sentenceKana}
           </div>
           {romaji && (
             <div className="sentence-romaji">{current ? current.romaji : challenge.sentenceRomaji}</div>
           )}
-          <div className="sentence-gloss">
+          <div className="sentence-gloss" lang={current ? helperTag : "en"}>
             {current ? current.english : "Say it all, and the whole world changes."}
           </div>
 
@@ -110,7 +123,7 @@ export function SentenceCard({
             {whole ? "Almost. Listen, then say the whole thing once more" : "Not quite. Listen and try once more"}
           </span>
         ) : heard ? (
-          <span className="sentence-heard" lang="ja">
+          <span className="sentence-heard" lang={targetTag}>
             {heard}
           </span>
         ) : (
@@ -135,7 +148,15 @@ export function SentenceCard({
             type="text"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
-            placeholder={`No mic? Type it: ${current ? current.romaji : challenge.sentenceRomaji}`}
+            placeholder={`No mic? Type it: ${
+              english
+                ? current
+                  ? current.kana
+                  : challenge.sentenceKana
+                : current
+                  ? current.romaji
+                  : challenge.sentenceRomaji
+            }`}
             aria-label="Type what you would say"
             autoComplete="off"
           />

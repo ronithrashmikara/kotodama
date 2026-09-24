@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
-import { playMagicReveal, type MagicStrength } from "@/lib/magic-sound";
+import { playMagicReveal, playTranslate, type MagicStrength } from "@/lib/magic-sound";
 
 export type Magic = {
   /** A new id restarts the spell, even for the same strength. */
@@ -10,12 +10,21 @@ export type Magic = {
   strength: MagicStrength;
   /** The player's words, which float up into the world and burst. */
   words?: string;
+  /** What those words mean: mid-flight, the words turn into it. */
+  meaning?: string;
   /** Big spells only: called the moment the mist clears on the new world. */
   onReveal?: () => void;
 };
 
 /** How long the small and medium spells stay on screen, in ms. */
-export const MAGIC_MS: Record<MagicStrength, number> = { small: 1400, medium: 3300, big: 4600 };
+export const MAGIC_MS: Record<MagicStrength, number> = { small: 1900, medium: 3300, big: 4600 };
+
+/**
+ * How long the words fly, and how far in they turn into their meaning: late enough
+ * to read the words, early enough to read the meaning after it.
+ */
+const WORDS_MS: Record<MagicStrength, number> = { small: 1800, medium: 3100, big: 4000 };
+const TURN_AT = 0.36;
 
 /**
  * A big spell holds its mist until the live picture has actually changed.
@@ -145,6 +154,13 @@ export function WorldMagic({
   const parts = useMemo(() => (magic ? spell(magic.strength) : null), [magic]);
   const [revealed, setRevealed] = useState<number | null>(null);
 
+  // The moment the words turn into their meaning gets its own little chime.
+  useEffect(() => {
+    if (!magic?.words || !magic.meaning) return;
+    const id = setTimeout(() => playTranslate(world), WORDS_MS[magic.strength] * TURN_AT);
+    return () => clearTimeout(id);
+  }, [magic, world]);
+
   useEffect(() => {
     if (!magic) return;
 
@@ -218,8 +234,18 @@ export function WorldMagic({
       ))}
       <span className="magic-ring" />
       {magic.words && (
-        <span className="magic-words" lang="ja">
-          {magic.words}
+        <span
+          className={`magic-words ${magic.meaning ? "turns" : ""}`}
+          style={{ "--words-ms": `${WORDS_MS[magic.strength]}ms` } as CSSProperties}
+        >
+          <span className="magic-jp" lang="ja">
+            {magic.words}
+          </span>
+          {magic.meaning && (
+            <span className="magic-en" lang="en">
+              {magic.meaning}
+            </span>
+          )}
         </span>
       )}
       {parts.sparks.map((s, i) => (

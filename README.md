@@ -24,6 +24,8 @@ There is an old Japanese belief, *kotodama* (言霊), that words have a spirit, 
 
 It starts from **zero Japanese**. A first-time player is taught one short sentence a word at a time, says it back, and watches the whole world turn to night.
 
+And it works **both ways**. Pick a world, and Yume asks what you want to learn: Japanese (with help in English), or English (with help in Japanese). A child in Tokyo can make the same dream answer to *"The moon rises"* that a child in London makes answer to *つきが のぼる*.
+
 ## See it live
 
 <table>
@@ -56,6 +58,9 @@ It starts from **zero Japanese**. A first-time player is taught one short senten
 - **Always-on voice.** Nothing to press; just speak. Or type, and romaji counts.
 - **Words that stay.** Every word is hoverable for its reading and meaning. Double-click to save it, and it comes back on a spaced-repetition schedule.
 - **Free play.** Describe any world you like and build it sentence by sentence.
+- **Learn English too.** The same game the other way round: an English-speaking recogniser, a native English voice, English sentences to build, and every meaning in simple Japanese.
+- **Your words turn into their meaning.** When a sentence lands, it floats up and flips into what it means, with a little chime: よるが くる becomes *Night comes!*, and *The moon rises* becomes つきが のぼる！
+- **A dream reel to share.** When the dream ends, the moments your words changed the world become a short vertical video (under 30 seconds), recorded straight off the live stream: each moment is a tiny lesson with the sentence spoken again, and it ends with the words you learned. Share it or download it; the moments stay as memory cards.
 
 ### The ladder
 

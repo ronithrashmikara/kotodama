@@ -1,3 +1,5 @@
+import type { Learn } from "@/lib/learn";
+
 // Difficulty ladder. A rung controls three things at once: how much Japanese
 // the narrator speaks at you (input), how much you have to produce back
 // (output), and how much English rides along (support).
@@ -34,6 +36,8 @@ export type Level = {
   /** Show romaji on the prompt card. A scaffold with an expiry date — rungs 0-1 only. */
   romaji: boolean;
   support: LevelSupport;
+  /** The same rung for someone learning English, with meanings in Japanese (lib/learn.ts). */
+  en: { narrationBrief: string; answerBrief: string; inputHint: string };
 };
 
 export const LEVELS: Level[] = [
@@ -50,6 +54,12 @@ export const LEVELS: Level[] = [
     mode: "sentence",
     romaji: true,
     support: "all",
+    en: {
+      narrationBrief: "ONE very short English sentence of 3-5 words, only the very first words a child learns.",
+      answerBrief:
+        "The learner is repeating a short English sentence they were just taught word by word. Accept any recognisable attempt. Pronunciation, articles and grammar are irrelevant here.",
+      inputHint: "say it…",
+    },
   },
   {
     id: 1,
@@ -64,6 +74,12 @@ export const LEVELS: Level[] = [
     mode: "choose",
     romaji: true,
     support: "all",
+    en: {
+      narrationBrief: "ONE short, simple English sentence using a child's first words.",
+      answerBrief:
+        "A single word or a short phrase naming something in the scene is a full, correct answer.",
+      inputHint: "pick one…",
+    },
   },
   {
     id: 2,
@@ -78,6 +94,12 @@ export const LEVELS: Level[] = [
     mode: "fill",
     romaji: false,
     support: "new",
+    en: {
+      narrationBrief: "ONE simple English sentence using very common words.",
+      answerBrief:
+        "The learner is completing a sentence frame. Accept the frame with any sensible word filled in; do not demand more than that.",
+      inputHint: "choose a word…",
+    },
   },
   {
     id: 3,
@@ -92,6 +114,12 @@ export const LEVELS: Level[] = [
     mode: "free",
     romaji: false,
     support: "new",
+    en: {
+      narrationBrief: "ONE very short English sentence, 5-8 words max, using only the most common words (CEFR A1).",
+      answerBrief:
+        "A SINGLE English WORD is a full, correct answer at this level. Accept one noun (or one adjective/verb) that names something genuinely present in or relevant to the scene. Do not require articles, a verb, or sentence structure.",
+      inputHint: "one word…",
+    },
   },
   {
     id: 4,
@@ -106,6 +134,12 @@ export const LEVELS: Level[] = [
     mode: "free",
     romaji: false,
     support: "words",
+    en: {
+      narrationBrief: "ONE simple English sentence using common words (CEFR A1).",
+      answerBrief:
+        "A short English phrase of 2-4 words is a full, correct answer (\"a big dog\", \"the moon shines\"). Do not demand a complete sentence or perfect articles.",
+      inputHint: "a short phrase…",
+    },
   },
   {
     id: 5,
@@ -120,6 +154,12 @@ export const LEVELS: Level[] = [
     mode: "free",
     romaji: false,
     support: "words",
+    en: {
+      narrationBrief: "TWO short English sentences using everyday words (CEFR A1-A2).",
+      answerBrief:
+        "A complete English sentence with a subject and a verb. Small slips (a missing \"the\", a wrong verb ending) are fine as long as the meaning lands.",
+      inputHint: "a whole sentence…",
+    },
   },
   {
     id: 6,
@@ -134,6 +174,12 @@ export const LEVELS: Level[] = [
     mode: "free",
     romaji: false,
     support: "none",
+    en: {
+      narrationBrief: "TWO to THREE flowing English sentences (CEFR A2-B1) with some descriptive adjectives and connected clauses.",
+      answerBrief:
+        "A descriptive English answer of one or more connected clauses, showing some range of vocabulary or a conjunction (and, because, while). Reward ambition over perfect accuracy.",
+      inputHint: "describe it…",
+    },
   },
 ];
 
@@ -145,6 +191,11 @@ export const FIRST_FREE_LEVEL_ID = 3;
 
 export function getLevel(id: number): Level {
   return LEVELS.find((l) => l.id === id) ?? LEVELS[0];
+}
+
+/** What a rung asks of the narrator and of the player, in the language being learned. */
+export function rungBrief(level: Level, learn: Learn): { narrationBrief: string; answerBrief: string; inputHint: string } {
+  return learn === "en" ? level.en : level;
 }
 
 const RUNG_KEY = "yume.rung.v1";

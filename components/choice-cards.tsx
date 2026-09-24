@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { Choice } from "@/app/api/choices/route";
+import { LEARN, type Learn } from "@/lib/learn";
 
 /**
  * How long you have to dwell on an option before it gives you the English.
@@ -17,9 +18,11 @@ type ChoiceCardsProps = {
   onPick: (choice: Choice) => void;
   disabled: boolean;
   onSpeak: (text: string) => void;
+  learn?: Learn;
 };
 
-export function ChoiceCards({ choices, onPick, disabled, onSpeak }: ChoiceCardsProps) {
+export function ChoiceCards({ choices, onPick, disabled, onSpeak, learn = "ja" }: ChoiceCardsProps) {
+  const { target, helper, targetTag, helperTag } = LEARN[learn];
   return (
     <div className="choices">
       <p className="choices-label">Which happens next?</p>
@@ -28,6 +31,7 @@ export function ChoiceCards({ choices, onPick, disabled, onSpeak }: ChoiceCardsP
           <ChoiceCard
             key={`${choice.kana}-${i}`}
             choice={choice}
+            tags={[targetTag, helperTag]}
             disabled={disabled}
             onPick={() => onPick(choice)}
             onSpeak={() => onSpeak(choice.kana)}
@@ -35,7 +39,8 @@ export function ChoiceCards({ choices, onPick, disabled, onSpeak }: ChoiceCardsP
         ))}
       </div>
       <p className="choices-hint">
-        Read the kana · hold your cursor on one for a few seconds if you need the English
+        Read the {learn === "en" ? target : "kana"} · hold your cursor on one for a few seconds if you need the{" "}
+        {helper}
       </p>
     </div>
   );
@@ -43,11 +48,14 @@ export function ChoiceCards({ choices, onPick, disabled, onSpeak }: ChoiceCardsP
 
 function ChoiceCard({
   choice,
+  tags,
   disabled,
   onPick,
   onSpeak,
 }: {
   choice: Choice;
+  /** `lang` for the option and for its revealed meaning. */
+  tags: [string, string];
   disabled: boolean;
   onPick: () => void;
   onSpeak: () => void;
@@ -98,9 +106,11 @@ function ChoiceCard({
       onFocus={startDwell}
       onBlur={cancelDwell}
     >
-      <span className="choice-kana">{choice.kana}</span>
+      <span className="choice-kana" lang={tags[0]}>
+        {choice.kana}
+      </span>
 
-      <span className="choice-reveal" aria-live="polite">
+      <span className="choice-reveal" aria-live="polite" lang={tags[1]}>
         {revealed ? choice.english : ""}
       </span>
 

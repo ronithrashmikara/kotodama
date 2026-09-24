@@ -186,6 +186,19 @@ export function playMagic(strength: MagicStrength, world = ""): number {
   return 2.6;
 }
 
+/** The player's Japanese turns into English mid-air: a bright "ta-ding!" and a sprinkle. */
+export function playTranslate(world = ""): number {
+  const audio = context();
+  if (!audio) return 0;
+  const { ac, out } = audio;
+  const root = ROOT[world] ?? 74;
+  const t = ac.currentTime + 0.02;
+  bell(ac, out, t, pick(root, 7), 0.2, 0.7);
+  bell(ac, out, t + 0.11, pick(root, 11), 0.24, 1.1);
+  [0, 1, 2, 3].forEach((i) => bell(ac, out, t + 0.2 + i * 0.04, pick(root, 13 + i), 0.07, 0.5));
+  return 1.1;
+}
+
 /** The mist clears: a cascade of chimes tumbling down over one deep, warm bell. */
 export function playMagicReveal(world = ""): number {
   const audio = context();

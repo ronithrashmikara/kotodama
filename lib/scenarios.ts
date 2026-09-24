@@ -1,10 +1,16 @@
 import scenariosData from "@/data/scenarios.json";
+import type { Learn } from "@/lib/learn";
 
 export type ScenarioStep = {
   objectiveEn: string;
   hintJp: string;
   requiredAll: string[];
   sampleAnswer: string;
+  /** The same objective for someone learning English: asked in Japanese, answered in English. */
+  objectiveJa: string;
+  hintEn: string;
+  sampleAnswerEn: string;
+  requiredAllEn: string[];
   sceneAdd: string;
 };
 
@@ -46,12 +52,14 @@ export function normalizeJapanese(text: string): string {
     .toLowerCase();
 }
 
-export function localCheck(step: ScenarioStep, learnerText: string) {
+// Folding works for English too: "There is a cat" becomes "thereisacat".
+export function localCheck(step: ScenarioStep, learnerText: string, learn: Learn = "ja") {
   const normalized = normalizeJapanese(learnerText);
-  const hits = step.requiredAll.filter((word) => normalized.includes(word));
+  const required = learn === "en" ? step.requiredAllEn : step.requiredAll;
+  const hits = required.filter((word) => normalized.includes(word));
   return {
-    correct: hits.length === step.requiredAll.length && normalized.length > 0,
-    missing: step.requiredAll.filter((word) => !normalized.includes(word)),
+    correct: hits.length === required.length && normalized.length > 0,
+    missing: required.filter((word) => !normalized.includes(word)),
   };
 }
 

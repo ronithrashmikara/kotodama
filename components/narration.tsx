@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { NarrationToken } from "@/app/api/narrate/route";
+import { LEARN, type Learn } from "@/lib/learn";
 
 type NarrationProps = {
   tokens: NarrationToken[];
@@ -13,6 +14,8 @@ type NarrationProps = {
   speaking: boolean;
   /** Bilingual speakers show their English inline rather than behind a toggle. */
   englishAlwaysOn?: boolean;
+  /** Which language the line is in (lib/learn.ts): English lines are one token per word. */
+  learn?: Learn;
 };
 
 export function Narration({
@@ -23,7 +26,9 @@ export function Narration({
   onReplay,
   speaking,
   englishAlwaysOn = false,
+  learn = "ja",
 }: NarrationProps) {
+  const { helper, targetTag, helperTag } = LEARN[learn];
   // Which token's gloss is pinned open (click), vs. merely hovered.
   const [pinned, setPinned] = useState<number | null>(null);
   const [hovered, setHovered] = useState<number | null>(null);
@@ -78,12 +83,12 @@ export function Narration({
             onClick={() => setShowEnglish((v) => !v)}
             aria-pressed={showEnglish}
           >
-            {showEnglish ? "Hide English" : "Show English"}
+            {showEnglish ? `Hide ${helper}` : `Show ${helper}`}
           </button>
         </div>
       </div>
 
-      <p className="narration-text">
+      <p className={`narration-text ${learn === "en" ? "spaced" : ""}`} lang={targetTag}>
         {tokens.map((token, i) => (
           <span
             key={`${token.surface}-${i}`}
@@ -118,7 +123,11 @@ export function Narration({
         ))}
       </p>
 
-      {showEnglish && <p className="narration-english">{english}</p>}
+      {showEnglish && (
+        <p className="narration-english" lang={helperTag}>
+          {english}
+        </p>
+      )}
 
       <p className="narration-hint">
         Hover or tap a word for its meaning · double-click to save it

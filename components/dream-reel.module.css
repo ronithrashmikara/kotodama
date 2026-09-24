@@ -1,0 +1,240 @@
+/* The dream reel: a card on the "you shaped this world" screen. Colours follow
+   the game's palette (app/styles.css :root --k-*), with the candy-sticker
+   accents of the spells. */
+
+.reel {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  margin: 8px 0 18px;
+  padding: 18px;
+  text-align: left;
+  background: rgba(24, 16, 26, 0.72);
+  border: 1px solid rgba(255, 246, 235, 0.12);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.65);
+}
+
+.head {
+  display: grid;
+  gap: 4px;
+}
+
+.kicker {
+  color: #e8bf6a;
+  font: 600 0.72rem/1.2 Inter, sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sub {
+  color: #c9c1b4;
+  font: 500 0.92rem/1.4 Fredoka, Inter, sans-serif;
+}
+
+.empty {
+  margin: 0;
+  padding: 18px;
+  color: #c9c1b4;
+  font: 500 0.95rem/1.5 Fredoka, Inter, sans-serif;
+  text-align: center;
+  background: rgba(255, 246, 235, 0.04);
+  border: 1px dashed rgba(255, 246, 235, 0.16);
+  border-radius: 14px;
+}
+
+.stage {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.making {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(100%, 320px);
+  aspect-ratio: 9 / 16;
+  max-height: 56vh;
+  align-content: center;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 179, 201, 0.18), transparent 60%),
+    linear-gradient(180deg, #1b1030, #2a1333 55%, #0c0812);
+  border: 1px solid rgba(255, 243, 196, 0.22);
+  border-radius: 18px;
+}
+
+.wand {
+  color: #fff3c4;
+  font-size: 2.6rem;
+  text-shadow:
+    0 0 12px #ffb86b,
+    0 0 26px rgba(255, 140, 200, 0.8);
+  animation: twinkle 1.4s ease-in-out infinite;
+}
+
+.makingText {
+  color: #fff3c4;
+  font: 600 1.05rem/1.3 Fredoka, Inter, sans-serif;
+  text-align: center;
+}
+
+.bar {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  background: rgba(255, 246, 235, 0.1);
+  border-radius: 999px;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ffb3c9, #e8bf6a);
+  border-radius: 999px;
+  transition: width 250ms linear;
+}
+
+.percent {
+  color: #9c968a;
+  font: 500 0.82rem/1.3 Inter, sans-serif;
+  text-align: center;
+}
+
+.preview {
+  width: min(100%, 320px);
+  max-height: 60vh;
+  aspect-ratio: 9 / 16;
+  background: #000;
+  border: 1px solid rgba(255, 243, 196, 0.25);
+  border-radius: 18px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 20px;
+  font: 600 0.95rem/1 Fredoka, Inter, sans-serif;
+  text-decoration: none;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.primary {
+  color: #2a0f24;
+  background: linear-gradient(180deg, #fff3c4, #ffc98a);
+  border: 2px solid #9b3b86;
+  box-shadow: 0 6px 18px -6px rgba(255, 184, 107, 0.7);
+}
+
+.secondary {
+  color: #f5f0e6;
+  background: rgba(255, 246, 235, 0.06);
+  border: 1px solid rgba(255, 246, 235, 0.2);
+}
+
+.primary:hover,
+.secondary:hover {
+  filter: brightness(1.08);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid #ffb3c9;
+  outline-offset: 2px;
+}
+
+.memories {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.strip {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  padding: 2px 2px 8px;
+  overflow-x: auto;
+  list-style: none;
+  scroll-snap-type: x mandatory;
+}
+
+.card {
+  display: grid;
+  flex: 0 0 min(200px, 70%);
+  gap: 6px;
+  padding: 8px 8px 12px;
+  background: rgba(255, 246, 235, 0.05);
+  border: 1px solid rgba(255, 246, 235, 0.1);
+  border-radius: 14px;
+  scroll-snap-align: start;
+}
+
+.pic {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  color: #e8bf6a;
+  font-size: 1.6rem;
+  background: linear-gradient(135deg, #2a1333, #1b1030);
+  border-radius: 10px;
+}
+
+.said {
+  color: #fff3c4;
+  font: 700 1rem/1.35 Fredoka, "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+}
+
+.meaning {
+  color: #ffb3c9;
+  font: 500 0.85rem/1.35 Fredoka, Inter, sans-serif;
+}
+
+/* Clips play here while the reel is made: in the page, so they decode, but unseen. */
+.host {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.host video {
+  width: 1px;
+  height: 1px;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.9) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(15deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wand {
+    animation: none;
+  }
+}

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
 import type { NarrationToken } from "@/app/api/narrate/route";
-import { COMPANION_SYSTEM } from "@/lib/companion";
+import { COMPANION_SYSTEM, COMPANION_SYSTEM_EN } from "@/lib/companion";
+import { asLearn, type Learn } from "@/lib/learn";
 import { chatJson, hasModel } from "@/lib/llm";
-import { getLevel } from "@/lib/levels";
+import { getLevel, rungBrief } from "@/lib/levels";
 
 export const runtime = "nodejs";
 
@@ -16,12 +17,19 @@ type CompanionRequest = {
   history?: Turn[];
   /** The player has just arrived and said nothing yet — Hina speaks first. */
   greeting?: boolean;
+  learn?: Learn;
 };
 
 const GREETING =
   "(The player has just arrived beside you and has not said anything yet. Greet them warmly in one short line and point out one thing you can both see, so they have something to answer.)";
 
+/**
+ * `reply` is in the language being learned; `replyEn` and `heardMeaning` are in
+ * the helper language — Japanese, when the player is learning English.
+ */
 export type CompanionReply = {
+  /** What the player said to her, in the helper language: their words turn into it. */
+  heardMeaning?: string;
   reply: string;
   replyEn: string;
   sceneAddEn: string;
@@ -43,6 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No model provider is configured" }, { status: 503 });
   }
 
+  const learn = asLearn(body.learn);
   const level = getLevel(body.level ?? 1);
   // Only the last few turns — this sits in the live loop, so the prompt stays
   // small enough to keep the reply fast.
@@ -52,9 +61,9 @@ export async function POST(request: Request) {
     .join("\n");
 
   try {
-    const result = await chatJson<CompanionReply>({
-      system: COMPANION_SYSTEM,
-      user: `The player's Japanese level: ${level.nameEn}. ${level.narrationBrief}
+    const result = await chatJson<CompanionReply & { replyMeaning?: string }>({
+      system: learn === "en" ? COMPANION_SYSTEM_EN : COMPANION_SYSTEM,
+      user: `The player's ${learn === "en" ? "English" : "Japanese"} level: ${level.nameEn}. ${rungBrief(level, learn).narrationBrief}
 
 What you can both see right now: ${body.scene || "(a quiet, undefined place)"}
 
@@ -68,11 +77,14 @@ The player just said: ${said}`,
     });
 
     if (!result.reply) throw new Error("companion response missing reply");
+    const tokens = Array.isArray(result.tokens) ? result.tokens : [];
     return NextResponse.json({
-      reply: result.reply,
-      replyEn: result.replyEn ?? "",
+      heardMeaning: body.greeting ? "" : result.heardMeaning ?? "",
+      // In English the words are the tokens, so the line is rebuilt from them.
+      reply: learn === "en" && tokens.length ? tokens.map((t) => t.surface.trim()).join(" ") : result.reply,
+      replyEn: (learn === "en" ? result.replyMeaning : result.replyEn) ?? "",
       sceneAddEn: result.sceneAddEn ?? "",
-      tokens: Array.isArray(result.tokens) ? result.tokens : [],
+      tokens,
     });
   } catch (caught) {
     console.error("Companion failed", caught);

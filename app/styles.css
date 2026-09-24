@@ -1875,6 +1875,16 @@ aside code {
   color: #fff6e6;
 }
 
+/* What the narrator's Japanese means, always one glance away. */
+.subtitle-en {
+  margin: 4px 0 0;
+  color: rgba(255, 244, 228, 0.88);
+  font: 500 clamp(0.92rem, 1.35vw, 1.12rem) / 1.4 Fredoka, Inter, sans-serif;
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.95),
+    0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
 .subtitle-feedback {
   margin: 9px 0 0;
   font-size: 0.85rem;
@@ -3718,6 +3728,129 @@ body.in-world {
   }
 }
 
+/* Words that turn into English: the Japanese rises, flares with a pop of
+   light, and becomes what it means — which then stays long enough to read. */
+.magic-words.turns {
+  display: grid;
+  place-items: center;
+  width: max-content;
+  animation: magic-words-turn var(--words-ms) cubic-bezier(0.2, 0.7, 0.2, 1) 0.05s both;
+}
+
+.magic-words.turns > *,
+.magic-words.turns::after {
+  grid-area: 1 / 1;
+}
+
+.magic-words.turns .magic-jp {
+  animation: magic-jp var(--words-ms) ease both;
+}
+
+/* A word is learned over its card; start above the card, not behind it. */
+.magic-small .magic-words {
+  top: 48%;
+}
+
+/* A candy sticker: a warm fill inside a berry outline, so it still reads
+   against white mist. */
+.magic-en {
+  max-width: min(86vw, 1100px);
+  color: #fff3c4;
+  font: 700 clamp(1.8rem, 3.6vw, 3.2rem) / 1.15 Fredoka, "Zen Maru Gothic", sans-serif;
+  letter-spacing: 0.01em;
+  white-space: normal;
+  text-align: center;
+  text-shadow:
+    0 0 2px #9b3b86,
+    2px 0 0 #9b3b86,
+    -2px 0 0 #9b3b86,
+    0 2px 0 #9b3b86,
+    0 -2px 0 #9b3b86,
+    0 5px 12px rgba(70, 18, 70, 0.55),
+    0 0 34px rgba(255, 180, 120, 0.9);
+  opacity: 0;
+  animation: magic-en var(--words-ms) ease both;
+}
+
+.magic-words.turns::after {
+  content: "";
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 250, 220, 0.95), rgba(255, 190, 120, 0.5) 40%, transparent 70%);
+  opacity: 0;
+  animation: magic-pop var(--words-ms) ease both;
+  pointer-events: none;
+}
+
+@keyframes magic-words-turn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 24px) scale(0.85);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  88% {
+    opacity: 1;
+    transform: translate(-50%, -16vh) scale(1.03);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -22vh) scale(1.08);
+  }
+}
+
+@keyframes magic-jp {
+  0%,
+  30% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  38%,
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+    filter: blur(8px);
+  }
+}
+
+@keyframes magic-en {
+  0%,
+  33% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  41% {
+    opacity: 1;
+    transform: scale(1.14);
+  }
+  47%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes magic-pop {
+  0%,
+  31% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  37% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+  50%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
 /* A ring of light leaving the card, where the words were said. */
 .magic-ring {
   position: absolute;
@@ -3795,8 +3928,43 @@ body.in-world {
     display: none;
   }
 
-  .magic-words {
+  .magic-words,
+  .magic-words.turns {
     animation-name: magic-words-still;
+  }
+
+  .magic-words.turns .magic-jp {
+    animation-name: magic-jp-still;
+  }
+
+  .magic-en {
+    animation-name: magic-en-still;
+  }
+
+  .magic-words.turns::after {
+    display: none;
+  }
+}
+
+@keyframes magic-jp-still {
+  0%,
+  34% {
+    opacity: 1;
+  }
+  38%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes magic-en-still {
+  0%,
+  36% {
+    opacity: 0;
+  }
+  40%,
+  100% {
+    opacity: 1;
   }
 }
 
@@ -3906,4 +4074,187 @@ body.in-world {
     opacity: 0;
     transform: translate(calc(-50% + var(--dx) * 1.8), calc(-50% + var(--dy) * 1.8 - 6vh)) scale(1.5);
   }
+}
+
+/* ---- Which language is this dream for? --------------------------------- */
+
+.learn-chooser {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(6, 4, 8, 0.62);
+  backdrop-filter: blur(6px);
+  animation: learn-in 220ms ease both;
+}
+
+@keyframes learn-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.learn-card {
+  position: relative;
+  width: min(640px, 100%);
+  padding: 28px 24px 24px;
+  text-align: center;
+  color: var(--k-text);
+  background: rgba(18, 13, 16, 0.94);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-lg);
+  box-shadow: var(--k-shadow-panel);
+  animation: learn-pop 320ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes learn-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+}
+
+.learn-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  color: var(--k-text-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.learn-close:hover {
+  color: var(--k-text);
+  background: rgba(255, 246, 235, 0.08);
+}
+
+.learn-world {
+  color: var(--k-gold);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.learn-card h2 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 20px;
+  font: 700 clamp(1.4rem, 3.4vw, 1.9rem) / 1.2 Fredoka, "Zen Maru Gothic", sans-serif;
+}
+
+.learn-card h2 span {
+  color: var(--k-sakura-soft);
+  font: 500 1rem / 1.3 "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+}
+
+.learn-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.learn-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 14px 18px;
+  color: var(--k-text);
+  text-align: center;
+  background: linear-gradient(160deg, rgba(255, 246, 235, 0.07), rgba(255, 246, 235, 0.02));
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-md);
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.learn-option:hover,
+.learn-option:focus-visible {
+  transform: translateY(-3px);
+  border-color: var(--k-gold);
+  background: linear-gradient(160deg, rgba(232, 191, 106, 0.16), rgba(236, 77, 128, 0.08));
+  outline: none;
+}
+
+/* What you chose last time, lit and labelled. */
+.learn-option.last {
+  border-color: rgba(232, 191, 106, 0.7);
+}
+
+.learn-option.last::after {
+  content: "last time";
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--k-gold);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.learn-big {
+  color: #fff3c4;
+  font: 700 clamp(1.7rem, 4.6vw, 2.4rem) / 1.15 Fredoka, "Zen Maru Gothic", sans-serif;
+  text-shadow:
+    0 0 1px #9b3b86,
+    2px 0 0 #9b3b86,
+    -2px 0 0 #9b3b86,
+    0 2px 0 #9b3b86,
+    0 -2px 0 #9b3b86,
+    0 6px 16px rgba(70, 18, 70, 0.5);
+}
+
+.learn-name {
+  color: var(--k-gold);
+  font-weight: 600;
+}
+
+.learn-desc {
+  margin-top: 4px;
+  color: var(--k-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+  .learn-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* English words need the spaces Japanese does without. */
+.sentence-strip.spaced {
+  gap: 4px 0.5em;
+}
+
+.fill-frame.spaced {
+  gap: 6px 0.4em;
+}
+
+.narration-text.spaced .narration-token {
+  margin-right: 0.28em;
+}
+
+.dream-gathering {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 14px 0;
+  color: var(--k-text-muted);
 }

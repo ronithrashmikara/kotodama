@@ -5,11 +5,15 @@ export const runtime = "nodejs";
 // Same sweet, gentle anime-style Japanese voice used in the Japanese Reader
 // project, via Fish Audio's free s2.1-pro-free model.
 const JP_VOICE_ID = "be67ba79424149ec8a4564cebd3e7938";
+// For someone learning English: "Sarah", one of Fish Audio's most-used
+// English voices — a native speaker, not the Japanese voice with an accent.
+const EN_VOICE_ID = "933563129e564b19a115bedd57b7406a";
 const FISH_MODEL = "s2.1-pro-free";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const text = searchParams.get("text")?.trim();
+  const voice = searchParams.get("lang") === "en" ? EN_VOICE_ID : JP_VOICE_ID;
   if (!text) {
     return NextResponse.json({ error: "Missing text" }, { status: 400 });
   }
@@ -32,7 +36,7 @@ export async function GET(request: Request) {
       },
       body: JSON.stringify({
         text,
-        reference_id: JP_VOICE_ID,
+        reference_id: voice,
         format: "mp3",
         mp3_bitrate: 128,
         normalize: true,
