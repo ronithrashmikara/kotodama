@@ -1,4 +1,7 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
+import { allowance, budgetAllows, noteDreamStarted, PASS_COOKIE, passCookie, quotaOn, readPass } from "@/lib/server/quota";
 
 const REACTOR_API_URL = "https://api.reactor.inc";
 const MODEL_NAME = "reactor/visko-orbis-stable";
@@ -10,6 +13,18 @@ export async function POST() {
       { error: "REACTOR_API_KEY is not configured" },
       { status: 500 },
     );
+  }
+
+  // Each token is one dream of up to five minutes (see lib/server/quota.ts).
+  const jar = await cookies();
+  const pass = readPass(jar.get(PASS_COOKIE)?.value);
+  if (quotaOn()) {
+    if (pass.used >= allowance(pass)) {
+      return NextResponse.json({ error: "quota:visitor", dreamsLeft: 0 }, { status: 429 });
+    }
+    if (!pass.judge && !(await budgetAllows())) {
+      return NextResponse.json({ error: "quota:budget", dreamsLeft: allowance(pass) - pass.used }, { status: 429 });
+    }
   }
 
   const response = await fetch(`${REACTOR_API_URL}/tokens`, {
@@ -44,8 +59,11 @@ export async function POST() {
     return NextResponse.json({ error: "Reactor returned no JWT" }, { status: 502 });
   }
 
+  const used = { ...pass, used: pass.used + 1 };
+  jar.set(passCookie(used));
+  noteDreamStarted();
   return NextResponse.json(
-    { jwt: result.jwt },
+    { jwt: result.jwt, dreamsLeft: Math.max(0, allowance(used) - used.used) },
     { headers: { "Cache-Control": "no-store, max-age=0" } },
   );
 }

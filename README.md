@@ -184,6 +184,8 @@ npm run dev                  # http://localhost:3000
 
 Orbis bills per second of an open session (about $0.58 a minute), and each session is capped at five minutes.
 
+**Sharing it publicly.** In production each visitor gets 30 minutes of live dreaming a day (six dreams of up to five minutes), and everyone together is capped at $20 of Orbis a day, read from Reactor's own session list. Judges get 60 minutes that the daily cap does not stop, from a link like `/?judge=CODE`. All of it is set in the environment: `YUME_VISITOR_MINUTES`, `YUME_JUDGE_MINUTES`, `YUME_DAILY_BUDGET_USD`, `YUME_JUDGE_CODES` (see `lib/server/quota.ts`).
+
 ## Project layout
 
 ```

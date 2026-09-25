@@ -9,6 +9,7 @@ import { OrbisPlayer } from "@/components/orbis-player";
 import { WordCard, type WordState } from "@/components/word-card";
 import { stickerById } from "@/lib/sticker-set";
 import type { MagicWord } from "@/app/api/words/route";
+import type { QuotaState } from "@/app/api/quota/route";
 import { VocabPanel } from "@/components/vocab-panel";
 import { VocabReview } from "@/components/vocab-review";
 import { WorldMagic, type Magic } from "@/components/world-magic";
@@ -316,6 +317,40 @@ function IsekaiSession({
     learnRef.current = next;
     setLearn(next);
   };
+
+  // Live dreams left today (lib/server/quota.ts). Unknown until the server says;
+  // a judge's link (?judge=CODE) turns this browser's pass into a judge's pass.
+  const [quota, setQuota] = useState<QuotaState | null>(null);
+  const [resting, setResting] = useState<"visitor" | "budget" | null>(null);
+  const refreshQuota = useCallback(async () => {
+    try {
+      const res = await fetch("/api/quota", { cache: "no-store" });
+      if (res.ok) setQuota(await res.json());
+    } catch {
+      // Without an answer the game stays open; /api/token still enforces it.
+    }
+  }, []);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("judge");
+    if (!code) {
+      void refreshQuota();
+      return;
+    }
+    url.searchParams.delete("judge");
+    window.history.replaceState(null, "", url.toString());
+    void fetch("/api/quota", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((state: QuotaState | null) => (state ? setQuota(state) : refreshQuota()))
+      .catch(() => refreshQuota());
+  }, [refreshQuota]);
+  // Why a world cannot start right now, if it cannot.
+  const outOfDreams = (q: QuotaState | null): "visitor" | "budget" | null =>
+    !q?.limited ? null : q.dreamsLeft <= 0 ? "visitor" : !q.open ? "budget" : null;
 
   // The lowest rung: three magic words, one of which is a whole turn.
   const [words, setWords] = useState<MagicWord[] | null>(null);
@@ -1072,8 +1107,14 @@ function IsekaiSession({
       const ok = await session.connectSession();
       if (!ok) {
         setPhase("pick");
+        // The token is refused once the day's dreams are used; say so kindly.
+        const res = await fetch("/api/quota", { cache: "no-store" }).catch(() => null);
+        const q: QuotaState | null = res?.ok ? await res.json() : null;
+        if (q) setQuota(q);
+        setResting(outOfDreams(q));
         return;
       }
+      void refreshQuota();
     }
 
     pendingStart.current = chosen.basePrompt;
@@ -1817,7 +1858,26 @@ function IsekaiSession({
               <span>{session.error}</span>
             </div>
           )}
-          <ScenarioPicker onPick={setPendingWorld} onAlbum={() => setAlbumOpen(true)} stickers={stickerCount} />
+          <ScenarioPicker
+            onPick={(world) => {
+              const why = outOfDreams(quota);
+              if (why) setResting(why);
+              else setPendingWorld(world);
+            }}
+            onAlbum={() => setAlbumOpen(true)}
+            stickers={stickerCount}
+            quota={quota}
+          />
+          {resting && (
+            <DreamsResting
+              why={resting}
+              onClose={() => setResting(null)}
+              onAlbum={() => {
+                setResting(null);
+                setAlbumOpen(true);
+              }}
+            />
+          )}
           {pendingWorld && (
             <LearnChooser
               world={pendingWorld}
@@ -2456,15 +2516,52 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
+/** Shown instead of a world when today's live dreaming is used up. */
+function DreamsResting({
+  why,
+  onClose,
+  onAlbum,
+}: {
+  why: "visitor" | "budget";
+  onClose: () => void;
+  onAlbum: () => void;
+}) {
+  return (
+    <div className="dreams-resting" role="dialog" aria-modal="true" aria-label="The dream world is resting">
+      <div className="dreams-resting-card">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/stickers/moon.webp" alt="" />
+        <h2>The dream world is resting</h2>
+        <p>
+          {why === "visitor"
+            ? "You've used all of today's live dreams. Come back tomorrow for more!"
+            : "So many dreamers came today that the dream world needs a rest. Come back tomorrow!"}
+        </p>
+        <p className="dreams-resting-sub">ゆめの せかいは おやすみちゅう。またあした！</p>
+        <div className="dreams-resting-actions">
+          <button type="button" className="album-open" onClick={onAlbum}>
+            Look at my sticker book
+          </button>
+          <button type="button" className="dreams-resting-close" onClick={onClose}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ScenarioPicker({
   onPick,
   onAlbum,
   stickers,
+  quota,
 }: {
   onPick: (s: Scenario) => void;
   onAlbum: () => void;
   /** How many stickers are in the book already. */
   stickers: number;
+  quota: QuotaState | null;
 }) {
   const [freeformOpen, setFreeformOpen] = useState(false);
   const [freeformIdea, setFreeformIdea] = useState("");
@@ -2518,9 +2615,21 @@ function ScenarioPicker({
         <div className="worlds-header">
           <span className="section-eyebrow">Pick your starting point</span>
           <h2 className="section-title">Choose a world</h2>
-          <button type="button" className="album-open" onClick={onAlbum}>
-            My sticker book <span>{stickers}</span>
-          </button>
+          <div className="worlds-header-row">
+            <button type="button" className="album-open" onClick={onAlbum}>
+              My sticker book <span>{stickers}</span>
+            </button>
+            {quota?.limited && (
+              <span className={`dreams-left ${quota.dreamsLeft && quota.open ? "" : "none"}`}>
+                {quota.judge && <strong>Judge pass · </strong>}
+                {!quota.dreamsLeft
+                  ? "🌙 No live dreams left today. Come back tomorrow!"
+                  : !quota.open
+                    ? "🌙 The dream world is resting today. Come back tomorrow!"
+                    : `🌙 ${quota.dreamsLeft} live ${quota.dreamsLeft === 1 ? "dream" : "dreams"} left today · up to 5 min each`}
+              </span>
+            )}
+          </div>
         </div>
         <div className="scenario-grid">
           {SCENARIOS.map((s, i) => (

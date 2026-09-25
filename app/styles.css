@@ -4980,3 +4980,102 @@ body.in-world {
     font-size: 1.2rem;
   }
 }
+
+/* ---- Live dreams left today (lib/server/quota.ts) ----------------------------- */
+
+.worlds-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.worlds-header-row .album-open {
+  margin: 0;
+}
+
+.dreams-left {
+  padding: 7px 14px;
+  color: #ffe9b8;
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 0.9rem;
+  background: rgba(232, 191, 106, 0.1);
+  border: 1px solid rgba(232, 191, 106, 0.35);
+  border-radius: 999px;
+}
+
+.dreams-left.none {
+  color: #ffc4de;
+  background: rgba(236, 77, 128, 0.1);
+  border-color: rgba(236, 77, 128, 0.4);
+}
+
+.dreams-resting {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 6, 20, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.dreams-resting-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  max-width: 420px;
+  padding: 26px 24px 22px;
+  text-align: center;
+  background: linear-gradient(160deg, #2a1d45, #171124);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 26px;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+}
+
+.dreams-resting-card img {
+  width: 110px;
+  height: auto;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.5));
+  animation: sticker-wiggle 4.5s ease-in-out infinite;
+}
+
+.dreams-resting-card h2 {
+  margin: 4px 0 0;
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.dreams-resting-card p {
+  margin: 0;
+  color: var(--k-text-muted);
+  line-height: 1.5;
+}
+
+.dreams-resting-sub {
+  font-family: "Zen Maru Gothic", sans-serif;
+  font-size: 0.9rem;
+}
+
+.dreams-resting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dreams-resting-close {
+  padding: 8px 22px;
+  color: #fff;
+  font-family: Fredoka, Inter, sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  background: linear-gradient(135deg, #ff6fa8, #c65bff);
+  border: 2px solid #fff;
+  border-radius: 999px;
+}
