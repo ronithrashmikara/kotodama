@@ -13,3 +13,7 @@ recordings/
 # Internal planning, scope and presentation material — kept locally, not published.
 # (docs now live under indser/docs/)
 indser/
+.vercel
+
+.vercel
+.env*

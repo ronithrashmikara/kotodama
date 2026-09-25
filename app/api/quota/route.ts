@@ -22,7 +22,7 @@ export type QuotaState = {
   dreamsLeft: number;
   minutesLeft: number;
   judge: boolean;
-  /** False when today's shared budget is spent (judges are not stopped by it). */
+  /** False when today's budget is spent (for a judge, the higher hard ceiling). */
   open: boolean;
 };
 
@@ -37,7 +37,7 @@ async function state(): Promise<QuotaState> {
     dreamsLeft,
     minutesLeft: dreamsLeft * 5,
     judge: pass.judge,
-    open: !limited || pass.judge || (await budgetAllows()),
+    open: !limited || (await budgetAllows(pass.judge)),
   };
 }
 

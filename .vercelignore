@@ -1,0 +1,9 @@
+# Only the app goes to Vercel: no local recordings, test runs, planning docs or keys.
+indser
+recordings
+docs
+.next
+node_modules
+.env*
+!.env.example
+*.log

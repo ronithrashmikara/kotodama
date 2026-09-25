@@ -8,6 +8,10 @@
 </p>
 
 <p align="center">
+  <b><a href="https://yume-inky.vercel.app">▶ Play it: yume-inky.vercel.app</a></b>
+</p>
+
+<p align="center">
   <a href="#see-it-live">See it</a> ·
   <a href="#how-a-turn-works">How a turn works</a> ·
   <a href="#why-it-has-to-be-live-video">Why live video</a> ·
@@ -25,6 +29,18 @@ There is an old Japanese belief, *kotodama* (言霊), that words have a spirit, 
 It starts from **zero Japanese**. A first-time player sees three stickers, each one word: say よる and night falls, say くじら and a whale leaps. After a few words the game quietly moves on to building short sentences a word at a time.
 
 And it works **both ways**. Pick a world, and Yume asks what you want to learn: Japanese (with help in English), or English (with help in Japanese). A child in Tokyo can make the same dream answer to *"The moon rises"* that a child in London makes answer to *つきが のぼる*.
+
+## Play it
+
+**[yume-inky.vercel.app](https://yume-inky.vercel.app)** runs in Chrome or Edge on a computer, with a microphone (typing works too). Pick a world, choose Japanese or English, and say one of the magic words.
+
+Every visitor gets **30 minutes of live dreaming a day**: six dreams of up to five minutes each, because every second of a live Orbis world is paid for. Your stickers, words and dream reels are kept in your browser.
+
+### For judges
+
+Each judge has a personal link, given with this submission, that looks like `https://yume-inky.vercel.app/?judge=…`. Open it once and that browser gets a judge pass: **60 minutes a day**, shown on the home page as “Judge pass”, and not held back when many visitors have played that day. The code disappears from the address bar and the pass stays in the browser, so after the first visit the plain address works too.
+
+The best first five minutes: pick **こうえん The Park**, say one of the three magic words (say よる and night falls), then say **みぎ** and the camera turns. Keep going, and a quest turns up, then a magic door to another world.
 
 ## See it live
 
@@ -184,7 +200,7 @@ npm run dev                  # http://localhost:3000
 
 Orbis bills per second of an open session (about $0.58 a minute), and each session is capped at five minutes.
 
-**Sharing it publicly.** In production each visitor gets 30 minutes of live dreaming a day (six dreams of up to five minutes), and everyone together is capped at $20 of Orbis a day, read from Reactor's own session list. Judges get 60 minutes that the daily cap does not stop, from a link like `/?judge=CODE`. All of it is set in the environment: `YUME_VISITOR_MINUTES`, `YUME_JUDGE_MINUTES`, `YUME_DAILY_BUDGET_USD`, `YUME_JUDGE_CODES` (see `lib/server/quota.ts`).
+**Sharing it publicly.** In production each visitor gets 30 minutes of live dreaming a day (six dreams of up to five minutes), and everyone together is capped at $20 of Orbis a day, read from Reactor's own session list. Judges get 60 minutes that the daily cap does not stop, from a link like `/?judge=CODE`; only a $50 ceiling stops everyone, so even a leaked code cannot empty the account. All of it is set in the environment: `YUME_VISITOR_MINUTES`, `YUME_JUDGE_MINUTES`, `YUME_DAILY_BUDGET_USD`, `YUME_HARD_CAP_USD`, `YUME_JUDGE_CODES` (see `lib/server/quota.ts`). Keep the codes out of the repository.
 
 ## Project layout
 

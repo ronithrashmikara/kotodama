@@ -12,7 +12,9 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto
 //  - for everyone, per day: a dollar cap on what Orbis has actually run today,
 //    read from Reactor's own session list, so it needs no database and counts
 //    exactly what Reactor bills.
-// Judges get a pass with a bigger allowance that the daily cap does not stop.
+// Judges get a pass with a bigger allowance that the daily cap does not stop —
+// only a hard ceiling does, so even a judge's code that leaked could not empty
+// the account.
 //
 // All of it is configurable in the environment (see .env.example).
 
@@ -32,6 +34,8 @@ export const QUOTA = {
   judgeDreams: Math.floor(minutes("YUME_JUDGE_MINUTES", 60) / 5),
   /** What everyone together may spend on Orbis per UTC day: YUME_DAILY_BUDGET_USD, $20 by default. */
   dailyBudgetUsd: minutes("YUME_DAILY_BUDGET_USD", 20),
+  /** The ceiling nobody passes, judges included: YUME_HARD_CAP_USD, $50 by default. */
+  hardCapUsd: minutes("YUME_HARD_CAP_USD", 50),
 };
 
 /** On in production; YUME_QUOTA=on or off overrides, so it can be tried locally. */
@@ -178,10 +182,13 @@ export function noteDreamStarted() {
   if (spent) spent = { ...spent, usd: spent.usd + DREAM_USD };
 }
 
-/** Whether one more dream fits in today's budget. If Reactor cannot be read, the game stays open. */
-export async function budgetAllows(): Promise<boolean> {
+/**
+ * Whether one more dream fits in today's budget: the daily budget for visitors,
+ * the hard ceiling for judges. If Reactor cannot be read, the game stays open.
+ */
+export async function budgetAllows(judge = false): Promise<boolean> {
   try {
-    return (await spentToday()) + DREAM_USD <= QUOTA.dailyBudgetUsd;
+    return (await spentToday()) + DREAM_USD <= (judge ? QUOTA.hardCapUsd : QUOTA.dailyBudgetUsd);
   } catch (caught) {
     console.error("Could not read today's Orbis spend", caught);
     return true;

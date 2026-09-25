@@ -22,7 +22,7 @@ export async function POST() {
     if (pass.used >= allowance(pass)) {
       return NextResponse.json({ error: "quota:visitor", dreamsLeft: 0 }, { status: 429 });
     }
-    if (!pass.judge && !(await budgetAllows())) {
+    if (!(await budgetAllows(pass.judge))) {
       return NextResponse.json({ error: "quota:budget", dreamsLeft: allowance(pass) - pass.used }, { status: 429 });
     }
   }
