@@ -68,7 +68,27 @@ export const DOOR_APPEARS =
   "A tall glowing magic door appears standing in the middle of the scene, warm golden light spilling from its edges.";
 
 /** The magic words, taught like any beginner sentence. */
-export function portalChallenge(learn: Learn): SentenceChallenge {
+export function portalChallenge(learn: Learn, oneWord = false): SentenceChallenge {
+  // The lowest rung: one word opens it.
+  if (oneWord) {
+    return learn === "en"
+      ? {
+          parts: [{ kana: "open", kind: "word", romaji: "オープン", english: "あけて", accept: ["opens", "opened", "opening"] }],
+          sentenceKana: "Open",
+          sentenceRomaji: "オープン",
+          sentenceEn: "あけて！",
+          changeEn: "The magic door swings open in a flood of golden light.",
+          sceneEn: "",
+        }
+      : {
+          parts: [{ kana: "あけて", kind: "word", romaji: "akete", english: "open!", accept: ["開けて", "あける", "開ける", "あけ"] }],
+          sentenceKana: "あけて",
+          sentenceRomaji: "akete",
+          sentenceEn: "Open!",
+          changeEn: "The magic door swings open in a flood of golden light.",
+          sceneEn: "",
+        };
+  }
   if (learn === "en") {
     return {
       parts: [

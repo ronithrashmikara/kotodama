@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { Narration as NarrationData, NarrationToken } from "@/app/api/narrate/route";
 import { Narration } from "@/components/narration";
 import { OrbisPlayer } from "@/components/orbis-player";
+import { WordCard, type WordState } from "@/components/word-card";
+import { stickerById } from "@/lib/sticker-set";
+import type { MagicWord } from "@/app/api/words/route";
 import { VocabPanel } from "@/components/vocab-panel";
 import { VocabReview } from "@/components/vocab-review";
 import { WorldMagic, type Magic } from "@/components/world-magic";
@@ -45,7 +48,8 @@ import { SentenceCard, type SentenceState } from "@/components/sentence-card";
 import type { Choice } from "@/app/api/choices/route";
 import type { FillFrame, FillOption } from "@/app/api/fill/route";
 import type { SentenceChallenge } from "@/app/api/sentence/route";
-import { matchesSentence, matchesWord } from "@/lib/romaji";
+import { matchesSentence, matchesWord, similarity, toRomaji } from "@/lib/romaji";
+import { LOOK_WORDS, matchLook, type LookWord } from "@/lib/look";
 import { addEvent, composeScene, type SceneEvent } from "@/lib/scene";
 import {
   buildCompanionScenario,
@@ -169,6 +173,8 @@ const SESSION_S = 300;
 const STICKER_AFTER_MS = 9_000;
 /** How long a big spell's mist takes to cover the picture: a restart hides behind it. */
 const MIST_UP_MS = 1_400;
+/** How loud the world's own sound stays while a voice is speaking over it. */
+const WORLD_DUCKED = 0.25;
 
 /** A small picture of the live world, for a sticker's memory. */
 function snapshot(): string | null {
@@ -310,6 +316,16 @@ function IsekaiSession({
     learnRef.current = next;
     setLearn(next);
   };
+
+  // The lowest rung: three magic words, one of which is a whole turn.
+  const [words, setWords] = useState<MagicWord[] | null>(null);
+  const wordsRef = useRef(words);
+  wordsRef.current = words;
+  const [wordState, setWordState] = useState<WordState>("waiting");
+  const [wordSaid, setWordSaid] = useState<string | null>(null);
+  const recentWords = useRef<string[]>([]);
+  // A turn of the camera takes Orbis 5-12s; saying みぎ three times is one turn.
+  const lastLookAt = useRef(0);
 
   // Quests: every few changes the world develops a small problem that the
   // player's words can solve, with the sentence to solve it taught like any
@@ -516,14 +532,18 @@ function IsekaiSession({
    * from the core set or drawn by fal, kept with a small picture of the world
    * once the change has landed — which is also when it is handed over.
    */
-  const earnSticker = useCallback((change: string, said?: string, meaning?: string, quest = false) => {
-    const asked = fetch("/api/sticker", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: change }),
-    })
-      .then((res) => (res.ok ? (res.json() as Promise<StickerReply>) : null))
-      .catch(() => null);
+  const earnSticker = useCallback((change: string, said?: string, meaning?: string, quest = false, known?: string) => {
+    // A magic word already is a sticker; anything else is matched or drawn.
+    const def = known ? stickerById(known) : undefined;
+    const asked: Promise<StickerReply | null> = def
+      ? Promise.resolve({ sticker: { id: def.id, en: def.en, ja: def.ja, src: def.src, fresh: false } })
+      : fetch("/api/sticker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: change }),
+        })
+          .then((res) => (res.ok ? (res.json() as Promise<StickerReply>) : null))
+          .catch(() => null);
     setTimeout(async () => {
       const reply = await asked;
       if (!reply?.sticker) return;
@@ -547,7 +567,16 @@ function IsekaiSession({
         meaning,
         change,
         quest = false,
-      }: { sound?: MagicStrength; onReveal?: () => void; meaning?: string; change?: string; quest?: boolean } = {},
+        sticker,
+      }: {
+        sound?: MagicStrength;
+        onReveal?: () => void;
+        meaning?: string;
+        change?: string;
+        quest?: boolean;
+        /** The sticker this change earns, when it is already known. */
+        sticker?: string;
+      } = {},
     ) => {
       const said = tidyMeaning(meaning);
       setMagic({ id: Date.now(), strength, words, meaning: said, onReveal });
@@ -555,7 +584,7 @@ function IsekaiSession({
         // A change the player's words made is a moment for the dream reel; the
         // steer goes out right after this, so its clip covers the change.
         recorder.current?.capture({ said: words, meaning: said, strength });
-        if (change) earnSticker(change, words, said, quest);
+        if (change) earnSticker(change, words, said, quest, sticker);
         changesSinceQuest.current += 1;
         changesHere.current += 1;
         // In a duet, the world now listens for the other player's language.
@@ -614,6 +643,39 @@ function IsekaiSession({
       speakSequence(lines, { onEnding: () => steerTo(COMPANION_LISTENING), lang });
     },
     [speakSequence, steerTo],
+  );
+
+  // The lowest rung: three single words that each change this scene. All three
+  // are said aloud when they arrive, so there is something to copy.
+  const offerWords = useCallback(
+    async (scene: string) => {
+      if (!scene.trim()) return;
+      setChoosing(true);
+      setWordState("waiting");
+      try {
+        const res = await fetch("/api/words", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scene, learn: learnRef.current, recent: recentWords.current }),
+        });
+        if (!res.ok) {
+          holdTurn(RETRY_MS);
+          return;
+        }
+        const data: { words?: MagicWord[] } = await res.json();
+        if (!data.words?.length) {
+          holdTurn(RETRY_MS);
+          return;
+        }
+        setWords(data.words);
+        speakSequence(data.words.map((w) => w.word), { lang: learnRef.current });
+      } catch {
+        holdTurn(RETRY_MS);
+      } finally {
+        setChoosing(false);
+      }
+    },
+    [holdTurn, speakSequence],
   );
 
   // Rung 0: a sentence built from what is in the scene, whose payoff changes
@@ -723,7 +785,8 @@ function IsekaiSession({
   useEffect(() => {
     if (phase !== "playing" || !scenario || isCompanion || turnHold || choosing) return;
     if (!session.runStarted) return;
-    if (level.mode === "sentence" && !sentence) void offerSentence(runningScene);
+    if (level.mode === "word" && !words) void offerWords(runningScene);
+    else if (level.mode === "sentence" && !sentence) void offerSentence(runningScene);
     else if (level.mode === "choose" && !choices) void offerChoices(runningScene);
     else if (level.mode === "fill" && !fillFrame) void offerFill(runningScene);
   }, [
@@ -735,9 +798,11 @@ function IsekaiSession({
     session.runStarted,
     level.mode,
     sentence,
+    words,
     choices,
     fillFrame,
     runningScene,
+    offerWords,
     offerSentence,
     offerChoices,
     offerFill,
@@ -836,6 +901,11 @@ function IsekaiSession({
    * not a number going up.
    */
   const recordTurn = useCallback((ok: boolean) => {
+    // Development only: every graded turn, for the test harness.
+    if (process.env.NODE_ENV === "development") {
+      const w = window as unknown as { __turns?: { t: number; ok: boolean }[] };
+      (w.__turns ??= []).push({ t: Date.now(), ok });
+    }
     setRungHistory((history) => {
       const next = [...history, ok].slice(-6);
       setLevelId((current) => {
@@ -963,6 +1033,10 @@ function IsekaiSession({
     sessionWords.current = [];
     sessionStickers.current = [];
     setDreamMoments(null);
+    setWords(null);
+    setWordSaid(null);
+    setWordState("waiting");
+    recentWords.current = [];
     setQuest(null);
     questsDone.current = [];
     changesSinceQuest.current = 0;
@@ -1096,6 +1170,91 @@ function IsekaiSession({
     settle(() => setSentence(null));
   };
 
+  /**
+   * Looking around: the camera turns (Orbis takes 5-12s), with a small spell
+   * for the word. Not a change to the world, so no sticker and no new card.
+   */
+  const lookAround = (look: LookWord) => {
+    lastActivityAt.current = Date.now();
+    if (Date.now() - lastLookAt.current < 4_000) return;
+    lastLookAt.current = Date.now();
+    castMagic("small", look.word, { meaning: look.meaning });
+    steerTo(look.prompt);
+    setVocab(saveWord({ surface: look.word, reading: look.reading, meaning: look.meaning }));
+  };
+
+  /** One magic word was said: that thing happens, with the biggest spell. */
+  const castWord = (w: MagicWord) => {
+    const next = addEvent(sceneEventsRef.current, { text: w.changeEn, source: "you", said: w.word });
+    setSceneEvents(next);
+    setWorldEvent(null);
+    setTurns((t) => t + 1);
+    setCorrectTurns((c) => c + 1);
+    setStreak((n) => n + 1);
+    recordTurn(true);
+    setWordSaid(w.word);
+    setWordState("waiting");
+    setTransforming(true);
+    setTurnHold(true);
+    recentWords.current = [...recentWords.current, w.id].slice(-6);
+    setVocab(saveWord({ surface: w.word, reading: w.reading, meaning: w.meaning }));
+    noteWord(w.word, w.meaning);
+    castMagic("big", w.word, {
+      meaning: w.meaning,
+      change: w.changeEn,
+      sticker: w.id,
+      onReveal: () =>
+        void narrateRef.current(composeScene(scenarioRef.current?.basePrompt ?? "", next), true, w.changeEn),
+    });
+    steerTo(asChange(w.changeEn));
+    settle(() => {
+      setWords(null);
+      setWordSaid(null);
+    });
+  };
+
+  /**
+   * The lowest rung: any one of the three words, said on its own, is a whole
+   * turn. Matched on the device; if nothing matched and the recogniser wrote
+   * Japanese, one quick check of the closest word in case it was only spelled
+   * differently (虹 for にじ).
+   */
+  const sayWord = async (said: string) => {
+    lastActivityAt.current = Date.now();
+    const offered = wordsRef.current;
+    if (!offered || !scenario || transforming || judging.current || !said.trim()) return;
+    const lang = learnRef.current;
+    const look = matchLook(said, lang);
+    if (look) return lookAround(look);
+    const english = lang === "en";
+    const spoken = (w: MagicWord) => ({ kana: w.word, romaji: w.reading, accept: w.accept });
+    let hit = offered.find((w) => (english ? matchesWordEn(said, spoken(w)) : matchesWord(said, spoken(w))));
+    if (!hit && !english && /[\u3040-\u30ff\u4e00-\u9faf]/.test(said)) {
+      const heard = toRomaji(said);
+      const closest = [...offered].sort((a, b) => similarity(heard, b.reading) - similarity(heard, a.reading))[0];
+      judging.current = true;
+      setWordState("checking");
+      try {
+        const res = await fetch("/api/heard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ said, target: closest.word, english: closest.meaning }),
+        });
+        if (res.ok && (await res.json()).ok) hit = closest;
+      } catch {
+        // No check means no match; they can simply say it again.
+      } finally {
+        judging.current = false;
+      }
+    }
+    if (wordsRef.current !== offered) return;
+    if (!hit) {
+      setWordState("retry");
+      return;
+    }
+    castWord(hit);
+  };
+
   /** Once a big change has landed and been heard, the cards come back. */
   const settle = (done: () => void) => {
     const release = () => {
@@ -1200,7 +1359,7 @@ function IsekaiSession({
     setPortal(dest);
     setSceneEvents((events) => addEvent(events, { text: DOOR_APPEARS, source: "world" }));
     steerTo(DOOR_APPEARS);
-    startCard(portalChallenge(learnRef.current));
+    startCard(portalChallenge(learnRef.current, levelRef.current < 0));
   };
 
   /** A quest or the door takes over the card: the first word for beginners, the whole sentence above. */
@@ -1219,7 +1378,7 @@ function IsekaiSession({
    */
   // The card being learned: the door's magic words, a quest's sentence, or
   // the rung-0 sentence, in that order.
-  const portalCard = useMemo(() => (portal ? portalChallenge(learn) : null), [portal, learn]);
+  const portalCard = useMemo(() => (portal ? portalChallenge(learn, levelId < 0) : null), [portal, learn, levelId]);
   const questCard = useMemo<SentenceChallenge | null>(
     () => (quest ? { ...quest, changeEn: quest.solvedEn, sceneEn: "" } : null),
     [quest],
@@ -1257,6 +1416,9 @@ function IsekaiSession({
   const saySentence = async (said: string) => {
     lastActivityAt.current = Date.now();
     if (!card || !scenario || transforming || judging.current) return;
+    // "みぎ" on its own looks around, unless みぎ is the word being taught.
+    const look = matchLook(said, learnRef.current);
+    if (look && !sentenceWords.some((w) => w.kana === look.word)) return lookAround(look);
     if (sentenceState === "ok" || !said.trim()) return;
     const asked = card;
     const english = learn === "en";
@@ -1273,6 +1435,10 @@ function IsekaiSession({
         // Hearing the target right after their own attempt is the most useful
         // correction there is.
         speak(word.kana);
+        return;
+      }
+      if (sentenceWords.length === 1) {
+        land(card);
         return;
       }
       setSentenceState("ok");
@@ -1301,12 +1467,17 @@ function IsekaiSession({
       speak(card.sentenceKana);
       return;
     }
+    land(card);
+  };
+
+  /** The card was said: the door opens, the quest is solved, or the world transforms. */
+  const land = (said: SentenceChallenge) => {
     setSentenceState("ok");
     recordTurn(true);
     setStreak((s) => s + 1);
-    if (portal && card === portalCard) travel(portal, card);
-    else if (quest && card === questCard) solveQuest(quest);
-    else transformWorld(card);
+    if (portal && said === portalCard) travel(portal, said);
+    else if (quest && said === questCard) solveQuest(quest);
+    else transformWorld(said);
   };
 
   /** Rung 2. No option is wrong — whichever is picked is what happens. */
@@ -1336,6 +1507,11 @@ function IsekaiSession({
     lastActivityAt.current = Date.now();
     if (isCompanion) return talkToCompanion();
     if ((!isFreeform && !step) || !answer.trim() || checking) return;
+    const look = matchLook(answer, learnRef.current);
+    if (look) {
+      setAnswer("");
+      return lookAround(look);
+    }
     setChecking(true);
     setFeedback(null);
     try {
@@ -1440,7 +1616,12 @@ function IsekaiSession({
     void fetch("/api/quest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scene: runningScene, learn: learnRef.current, recent: questsDone.current }),
+      body: JSON.stringify({
+        scene: runningScene,
+        learn: learnRef.current,
+        recent: questsDone.current,
+        oneWord: levelRef.current < 0,
+      }),
     })
       .then((res) => (res.ok ? (res.json() as Promise<Quest>) : null))
       .then((q) => {
@@ -1493,6 +1674,43 @@ function IsekaiSession({
   // The ambience stands in for the world while its own sound is off, and
   // hands over when the player turns that on.
   useEffect(() => ambience.current?.setEnabled(session.muted), [session.muted]);
+
+  // The world plays with its sound on. A browser that will not play sound yet
+  // would leave the picture frozen (the SDK swallows the refusal), so then the
+  // world plays muted instead, and the Sound chip turns it on with a click.
+  const toggleMutedRef = useRef(session.toggleMuted);
+  toggleMutedRef.current = session.toggleMuted;
+  useEffect(() => {
+    if (phase !== "playing" || !session.runStarted || session.muted) return;
+    const id = setTimeout(() => {
+      const video = document.querySelector<HTMLVideoElement>(".world-stage video");
+      if (!video?.srcObject || !video.paused) return;
+      video.muted = true;
+      void video.play().catch(() => {});
+      toggleMutedRef.current();
+    }, 2500);
+    return () => clearTimeout(id);
+  }, [phase, session.runStarted, session.muted]);
+
+  // Voices come first: the world's own sound dips while anyone is speaking,
+  // and comes back up gently afterwards.
+  useEffect(() => {
+    const video = document.querySelector<HTMLVideoElement>(".world-stage video");
+    if (!video) return;
+    const target = audible || speaking ? WORLD_DUCKED : 1;
+    const from = video.volume;
+    const start = performance.now();
+    const ms = target < from ? 250 : 900;
+    let frame = 0;
+    const step = (now: number) => {
+      // A frame's timestamp can come slightly before `start`; clamp both ends.
+      const k = Math.min(1, Math.max(0, (now - start) / ms));
+      video.volume = Math.min(1, Math.max(0, from + (target - from) * k));
+      if (k < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [audible, speaking, session.runStarted]);
 
   const statusLabel = rehearsing
     ? "Rehearsal"
@@ -1965,6 +2183,34 @@ function IsekaiSession({
                           }
                         />
                       </>
+                    ) : level.mode === "word" && words ? (
+                      <WordCard
+                        words={words}
+                        looks={LOOK_WORDS[learn]}
+                        state={wordState}
+                        said={wordSaid}
+                        heard={answer}
+                        learn={learn}
+                        transforming={transforming}
+                        onHear={(word) => speak(word)}
+                        onTyped={sayWord}
+                        mic={
+                          <MicButton
+                            onResult={(text) => {
+                              lastActivityAt.current = Date.now();
+                              setAnswer(text);
+                            }}
+                            onSpeechEnd={() => {
+                              void sayWord(answer);
+                              setAnswer("");
+                            }}
+                            disabled={checking}
+                            autoStart={phase === "playing"}
+                            holdWhileSpeaking={audible}
+                            speech={lang.speech}
+                          />
+                        }
+                      />
                     ) : level.mode === "choose" && choices ? (
                       <ChoiceCards
                         choices={choices}

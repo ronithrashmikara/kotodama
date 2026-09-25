@@ -29,7 +29,9 @@ export function useOrbisSession(
   const [availableResolutions, setAvailableResolutions] = useState<string[]>(
     DOCUMENTED_RESOLUTIONS,
   );
-  const [muted, setMuted] = useState(true);
+  // The world's own sound is part of the fun, so it starts on. (The player has
+  // already clicked a world by then, which is what lets a browser play it.)
+  const [muted, setMuted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [nanoBusy, setNanoBusy] = useState(false);
   const [runStarted, setRunStarted] = useState(false);

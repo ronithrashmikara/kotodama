@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 
 import { asLearn, type Learn } from "@/lib/learn";
 import { chatJson, hasModel } from "@/lib/llm";
-import { partsProblem, SENTENCE_RULES, shapeSentence, type DraftPart, type TaughtSentence } from "@/lib/sentence-shape";
+import {
+  ONE_WORD_RULES,
+  partsProblem,
+  SENTENCE_RULES,
+  shapeSentence,
+  type DraftPart,
+  type TaughtSentence,
+} from "@/lib/sentence-shape";
 
 export const runtime = "nodejs";
 
@@ -11,6 +18,8 @@ type QuestRequest = {
   learn?: Learn;
   /** Quests already done this dream, so the next one is different. */
   recent?: string[];
+  /** The lowest rung: the quest is solved by saying one word. */
+  oneWord?: boolean;
 };
 
 /**
@@ -76,12 +85,22 @@ Respond ONLY with compact JSON, no markdown fences:
 {"title":"...","ask":"...","problemEn":"...","solvedEn":"...","sticker":"...","parts":[{"kind":"word","word":"sea","meaning":"うみ","reading":"シー","accept":["see"]},{"kind":"word","word":"there","meaning":"あっち","reading":"ゼア","accept":["their"]}],"meaning":"うみは あっち"}`,
 };
 
-function problem(learn: Learn, draft: Draft): string | null {
+function problem(learn: Learn, draft: Draft, oneWord: boolean): string | null {
   for (const key of ["title", "ask", "problemEn", "solvedEn", "sticker"] as const) {
     if (!draft[key]?.trim()) return `"${key}" was missing`;
   }
-  return partsProblem(learn, draft.parts);
+  return partsProblem(learn, draft.parts, oneWord);
 }
+
+// The one-word version of each prompt: the same quest, solved by one word.
+const oneWordSystem = (learn: Learn) =>
+  SYSTEM[learn]
+    .replace("SAYING one short Japanese sentence", "SAYING ONE Japanese word")
+    .replace("SAYING one short English sentence", "SAYING ONE English word")
+    .replace(SENTENCE_RULES[learn], ONE_WORD_RULES[learn])
+    .replace(/\{"title".*$/s, learn === "en"
+      ? '{"title":"...","ask":"...","problemEn":"...","solvedEn":"...","sticker":"...","parts":[{"kind":"word","word":"jump","meaning":"とんで","reading":"ジャンプ","accept":["jumps"]}],"meaning":"とんで"}'
+      : '{"title":"...","ask":"...","problemEn":"...","solvedEn":"...","sticker":"...","parts":[{"kind":"word","kana":"とんで","english":"jump!","accept":["飛んで","跳んで"]}],"sentenceEn":"Jump!"}');
 
 export async function POST(request: Request) {
   let body: QuestRequest;
@@ -98,10 +117,11 @@ export async function POST(request: Request) {
   }
 
   const learn = asLearn(body.learn);
+  const oneWord = Boolean(body.oneWord);
   const recent = (body.recent ?? []).filter(Boolean);
   const ask = (extra = "") =>
     chatJson<Draft>({
-      system: SYSTEM[learn],
+      system: oneWord ? oneWordSystem(learn) : SYSTEM[learn],
       user:
         `The scene right now: ${scene}\n\n` +
         (recent.length ? `Quests already done: ${recent.join(" | ")}\n\n` : "") +
@@ -112,10 +132,10 @@ export async function POST(request: Request) {
 
   try {
     let draft = await ask();
-    let reason = problem(learn, draft);
+    let reason = problem(learn, draft, oneWord);
     if (reason) {
       draft = await ask(`\n\nYour previous answer could not be used because ${reason}. Follow every rule.`);
-      reason = problem(learn, draft);
+      reason = problem(learn, draft, oneWord);
     }
     if (reason) return NextResponse.json({ error: `Could not make a quest: ${reason}` }, { status: 502 });
 

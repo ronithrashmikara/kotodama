@@ -54,6 +54,34 @@ export const SENTENCE_RULES: Record<Learn, string> = {
 - Split it into "parts", in order. Each content word is {"kind":"word","word":"moon","meaning":"つき","reading":"ムーン","accept":[...]}: "meaning" is the word's meaning in simple Japanese kana a child can read, "reading" is how it sounds, in katakana, and "accept" lists other spellings a speech recogniser might hand back for the SAME spoken word — homophones and other forms ("night" → ["knight"], "sun" → ["son"], "rises" → ["rise"]). Never a different word that means something similar. Each "the" or "a" is {"kind":"small","word":"the","reading":"ザ"}.`,
 };
 
+/**
+ * The same card at the lowest rung, where one word is a whole turn. Free
+ * choice drifted to words no child says (ともす, ともって), so the word comes
+ * from a short list of the requests and greetings small children already use.
+ */
+export const ONE_WORDS: Record<Learn, Record<string, string>> = {
+  ja: {
+    つけて: "turn it on!", とんで: "fly! / jump!", おきて: "wake up!", ねて: "sleep!", うたって: "sing!",
+    おいで: "come here!", およいで: "swim!", はしって: "run!", まわって: "spin!", おどって: "dance!",
+    わらって: "smile!", たべて: "eat!", さいて: "bloom!", ひかって: "shine!", あけて: "open!",
+    とまって: "stop!", がんばれ: "you can do it!", ありがとう: "thank you", おはよう: "good morning",
+    おやすみ: "good night", こんにちは: "hello",
+  },
+  en: {
+    jump: "とんで", fly: "とんで", wake: "おきて", sleep: "ねて", sing: "うたって", come: "おいで",
+    swim: "およいで", run: "はしって", spin: "まわって", dance: "おどって", smile: "わらって", eat: "たべて",
+    grow: "そだって", shine: "ひかって", open: "あけて", stop: "とまって", hello: "こんにちは",
+    thanks: "ありがとう", goodnight: "おやすみ",
+  },
+};
+
+export const ONE_WORD_RULES: Record<Learn, string> = {
+  ja: `- EXACTLY ONE word, no particles, and it MUST be one of these: ${Object.entries(ONE_WORDS.ja).map(([w, e]) => `${w} (${e})`).join(", ")}. Pick the one whose meaning makes the happy ending happen, and write the quest around it.
+- "parts" holds just that one word: [{"kind":"word","kana":"とんで","english":"fly!","accept":["飛んで","跳んで"]}], with "accept" listing its other spellings with the SAME reading, above all the kanji.`,
+  en: `- EXACTLY ONE English word, and it MUST be one of these: ${Object.keys(ONE_WORDS.en).join(", ")}. Pick the one that makes the happy ending happen, and write the quest around it.
+- "parts" holds just that one word: [{"kind":"word","word":"jump","meaning":"とんで","reading":"ジャンプ","accept":["jumps"]}]: "meaning" in simple Japanese kana, "reading" how it sounds in katakana.`,
+};
+
 const KANJI = /[一-龯㐀-䶿]/;
 const KANA_ONLY = /^[぀-ヿー]+$/;
 const PARTICLES = new Set(["が", "は", "を", "に", "で", "の", "と", "へ", "も"]);
@@ -61,9 +89,13 @@ const ENGLISH_WORD = /^[A-Za-z][A-Za-z'-]*$/;
 const SMALL_WORDS = new Set(["the", "a", "an"]);
 
 /** Why a drafted sentence cannot be taught, or null if it can. */
-export function partsProblem(learn: Learn, parts: DraftPart[] = []): string | null {
+export function partsProblem(learn: Learn, parts: DraftPart[] = [], oneWord = false): string | null {
   const words = parts.filter((p) => p.kind === "word");
-  if (words.length < 2 || words.length > 3) return "it did not have 2 or 3 content words";
+  if (oneWord) {
+    if (words.length !== 1 || parts.length !== 1) return "it was not exactly one word";
+    const said = (learn === "en" ? words[0].word : words[0].kana)?.trim().toLowerCase() ?? "";
+    if (!(said in ONE_WORDS[learn])) return `"${said}" is not one of the listed words`;
+  } else if (words.length < 2 || words.length > 3) return "it did not have 2 or 3 content words";
   for (const part of parts) {
     if (learn === "en") {
       const word = part.word?.trim() ?? "";

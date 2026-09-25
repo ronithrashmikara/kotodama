@@ -22,7 +22,7 @@
 
 There is an old Japanese belief, *kotodama* (言霊), that words have a spirit, and that saying something can make it real. Yume is the place where that is literally true.
 
-It starts from **zero Japanese**. A first-time player is taught one short sentence a word at a time, says it back, and watches the whole world turn to night.
+It starts from **zero Japanese**. A first-time player sees three stickers, each one word: say よる and night falls, say くじら and a whale leaps. After a few words the game quietly moves on to building short sentences a word at a time.
 
 And it works **both ways**. Pick a world, and Yume asks what you want to learn: Japanese (with help in English), or English (with help in Japanese). A child in Tokyo can make the same dream answer to *"The moon rises"* that a child in London makes answer to *つきが のぼる*.
 
@@ -60,7 +60,9 @@ And it works **both ways**. Pick a world, and Yume asks what you want to learn: 
 ## What's in it
 
 - **A living world.** When you go quiet for a while (about 20 seconds), the world drifts on its own: a petal falls, a firefly glows. It is a place, not a clip waiting for input.
-- **A ladder from zero.** Seven rungs, from repeating a sentence you were just taught to describing the scene freely. It adjusts itself as you play and never announces it.
+- **One word is enough.** The first rung is three magic words, each a sticker. Tap one to hear it; say it and it happens, and you earn that sticker. At this rung quests and the magic door take one word too (とんで, あけて).
+- **Look around.** Say ひだり, みぎ or うしろ (left, right, behind) at any time and the camera turns to show another part of the world.
+- **A ladder from zero.** Eight rungs, from one magic word to describing the scene freely. It adjusts itself as you play and never announces it.
 - **Magic that covers the wait.** A live world takes a few seconds to change. The moment your words land, mist rolls in, the Japanese you said floats up and bursts into stars, and a music-box tune plays (synthesised in the browser, never the same twice). The mist holds until the video itself has changed, then clears on the new world.
 - **Hina, a companion.** Talk to her in Japanese or English. She replies aloud, her face is steered to talk while her voice plays, and her replies steer the world.
 - **Always-on voice.** Nothing to press; just speak. Or type, and romaji counts.
@@ -71,7 +73,7 @@ And it works **both ways**. Pick a world, and Yume asks what you want to learn: 
 - **Quests.** Every couple of changes the world asks for something ("the whale is shy!"), with its own sentence to learn. Solve it for a gold sticker.
 - **A sticker book.** Everything your words create becomes a sticker with a tiny photo of the world you made it in. 55 are pre-drawn; anything new is drawn on the spot by fal (FLUX, cut out with BiRefNet).
 - **The magic door.** After a few changes a door appears. Say the magic words and Orbis restarts somewhere new (a toy room, a candy town, a garden on the moon) inside the same session: no new GPU, no 20-second wait. Nobody takes the door? The dream quietly refreshes itself before the picture starts to drift.
-- **A world you can hear.** Waves and gulls on an island, crickets at night, rain on a city: an ambience synthesised in the browser from whatever the world has become, ducking under every voice.
+- **A world you can hear.** Orbis generates each world's own sound live, and it plays from the start, dipping under every voice so the Japanese stays clear. With the sound off, an ambience synthesised in the browser (waves, crickets, rain) stands in for it.
 - **Hina remembers you.** Your last dreams are kept on your device, and she brings them up: "Last time you made a whale jump!"
 - **Play together.** Two players, one world: player 1 learns Japanese, player 2 learns English, and the turn passes with every spell.
 - **A dream reel to share.** When the dream ends, the moments your words changed the world become a short vertical video (under 30 seconds), recorded straight off the live stream: each moment is a tiny lesson with the sentence spoken again, and it ends with the words you learned. Share it or download it; the moments stay as memory cards.
@@ -80,6 +82,7 @@ And it works **both ways**. Pick a world, and Yume asks what you want to learn: 
 
 | | Rung | What you do |
 |---|---|---|
+| ★ | ことば · One word | Say one of three magic words (each a sticker): that thing happens |
 | 0 | つなぐ · Build a sentence | Learn a sentence word by word, then say it whole: the world transforms |
 | 1 | えらぶ · Choose | Pick one of two things to happen, written in kana |
 | 2 | うめる · Fill the gap | The sentence is written for you; supply the missing word |
@@ -145,6 +148,8 @@ Measured on live sessions while building this, 23–24 September 2026:
 | **A live world is never still** | To time the magic's reveal, Yume compares the average colour of a 4×3 grid of the stream against the moment you spoke. Drifting petals barely move that; a sky turning to night moves it a lot. |
 | **Cold start** | A new world took **17–25 seconds** to go live, so the loading screen explains that a GPU is waking up. |
 | **Resolution** | The default stream is 2K, upscaled from 832×480. Yume asks for 1080p: the same picture for less bandwidth and decoding on a normal laptop. |
+| **The camera turns, loosely** | Steering the view: *turn left*, *turn right* and *turn around* swung the picture onto a new part of the park within **5–12s**. *Tilt up*, *tilt down*, *move closer* and *fly overhead* barely moved it in two runs, so the game only offers turning. |
+| **Every world has its own sound** | The stream carries an audio track that Orbis generates to match the scene. Measured live: continuous, around −20 dB, never silent. |
 | **A fresh start without a new GPU** | Sending `reset` and then a new prompt restarts generation inside the same session: `generation_started` came back in **~2.5s**, against 17–25s for a new session. The first new frames take a few seconds more, so the mist holds until the video has actually painted again. That is how the magic door works. |
 | **No lip sync from audio** | Orbis can't be driven by a voice track, so Hina is steered into *talking* before her voice starts and back to *listening* just before it ends. |
 
@@ -182,12 +187,12 @@ Orbis bills per second of an open session (about $0.58 a minute), and each sessi
 ## Project layout
 
 ```
-app/api/            Server routes: grading, narration, Hina, drift, sentences, quests, choices,
+app/api/            Server routes: grading, narration, Hina, drift, magic words, sentences, quests, choices,
                     fill-the-gaps, stickers, speech double-check, Fish Audio proxy, Orbis tokens
 components/         isekai-game.tsx (the game), world-magic.tsx (the spells),
                     sentence-card, choice-cards, fill-card, narration, vocabulary
 lib/                llm.ts (provider failover), magic-sound.ts, ambience.ts, levels.ts (the ladder),
-                    romaji.ts and english.ts (on-device matching), portals.ts, dreams.ts,
+                    romaji.ts and english.ts (on-device matching), look.ts, portals.ts, dreams.ts,
                     sticker-set.ts, stickers.ts, scene.ts, companion.ts, vocab.ts
 public/stickers/    The pre-drawn sticker set (scripts/generate-stickers.mjs)
 hooks/              The Orbis session, and the rehearsal stand-in

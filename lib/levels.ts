@@ -16,7 +16,7 @@ import type { Learn } from "@/lib/learn";
 // meaning they do not have.
 
 /** What the player has to produce this turn. */
-export type LevelMode = "sentence" | "choose" | "fill" | "free";
+export type LevelMode = "word" | "sentence" | "choose" | "fill" | "free";
 
 /** How much English rides along with the Japanese. */
 export type LevelSupport = "all" | "new" | "words" | "none";
@@ -41,6 +41,28 @@ export type Level = {
 };
 
 export const LEVELS: Level[] = [
+  // The very first rung: one word is a whole turn. A child who can say くじら
+  // makes a whale appear. (It is -1 so the rungs above keep the numbers saved
+  // in players' browsers.)
+  {
+    id: -1,
+    nameJp: "ことば",
+    nameEn: "One word",
+    blurb: "Say one magic word, and the world changes.",
+    narrationBrief:
+      "ONE very short sentence of 2-4 words, JLPT N5, hiragana and katakana only, no kanji at all, that names the new thing.",
+    answerBrief:
+      "The learner is saying ONE word they were just shown. Accept any recognisable attempt at that word.",
+    inputHint: "いってみて…",
+    mode: "word",
+    romaji: true,
+    support: "all",
+    en: {
+      narrationBrief: "ONE very short English sentence of 2-4 words, only the very first words a child learns, that names the new thing.",
+      answerBrief: "The learner is saying ONE English word they were just shown. Accept any recognisable attempt at that word.",
+      inputHint: "say it…",
+    },
+  },
   {
     id: 0,
     nameJp: "つなぐ",
@@ -184,7 +206,7 @@ export const LEVELS: Level[] = [
 ];
 
 /** Everyone starts at the bottom — see "Choosing the rung" in the design doc. */
-export const DEFAULT_LEVEL_ID = 0;
+export const DEFAULT_LEVEL_ID = -1;
 
 /** The first rung that asks for unaided Japanese, for the "I already know some" jump. */
 export const FIRST_FREE_LEVEL_ID = 3;

@@ -4825,3 +4825,158 @@ body.in-world {
     bottom: 66px;
   }
 }
+
+/* ---- The lowest rung: three magic words, each a sticker ------------------------ */
+
+.word-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 14px 18px 12px;
+  text-align: center;
+  background: var(--k-panel);
+  border: 1px solid var(--k-border-strong);
+  border-radius: var(--k-radius-lg);
+  box-shadow: var(--k-shadow-panel);
+}
+
+.word-card.word-retry {
+  border-color: rgba(255, 177, 92, 0.45);
+}
+
+.word-label {
+  font-family: Fredoka, Inter, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #ffd6ea;
+}
+
+.word-tiles {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.word-tile {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  width: 132px;
+  padding: 10px 8px 9px;
+  color: var(--k-text);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  transition:
+    transform 220ms cubic-bezier(0.3, 1.6, 0.5, 1),
+    border-color 200ms ease,
+    opacity 300ms ease;
+}
+
+.word-tile:hover,
+.word-tile:focus-visible {
+  border-color: #ff9ecb;
+  transform: translateY(-3px) rotate(-2deg);
+}
+
+.word-tile img {
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.45));
+}
+
+.word-say {
+  margin-top: 2px;
+  font-family: "Zen Maru Gothic", Fredoka, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #fff;
+}
+
+.word-reading {
+  font-size: 0.78rem;
+  color: #ffc4de;
+}
+
+.word-meaning {
+  font-size: 0.74rem;
+  color: var(--k-text-muted);
+}
+
+.word-tile.chosen {
+  border-color: #fff3b0;
+  transform: scale(1.12);
+  box-shadow: 0 0 34px -4px rgba(255, 216, 120, 0.7);
+}
+
+.word-tile.faded {
+  opacity: 0.3;
+}
+
+.word-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+/* Where to look: small, below the magic words. */
+.look-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.look-label {
+  font-size: 0.74rem;
+  color: var(--k-text-muted);
+}
+
+.look-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px 11px;
+  color: var(--k-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+  background: rgba(200, 170, 255, 0.1);
+  border: 1px solid rgba(200, 170, 255, 0.3);
+  border-radius: 999px;
+}
+
+.look-chip small {
+  font-size: 0.68rem;
+  color: var(--k-text-muted);
+}
+
+.look-chip:hover,
+.look-chip:focus-visible {
+  border-color: rgba(200, 170, 255, 0.7);
+}
+
+@media (max-width: 640px) {
+  .word-tiles {
+    gap: 6px;
+  }
+
+  .word-tile {
+    width: 30vw;
+    max-width: 118px;
+    padding: 8px 4px;
+  }
+
+  .word-tile img {
+    width: 54px;
+    height: 54px;
+  }
+
+  .word-say {
+    font-size: 1.2rem;
+  }
+}
